@@ -82,13 +82,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0 flex-1">
         {demo && ready && <DemoBanner />}
         <main className="mx-auto w-full max-w-6xl px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-32 sm:px-6 md:pb-12 lg:px-10 lg:pt-8">
-          {ready ? (
-            children
-          ) : status === "error" ? (
-            <LoadError />
-          ) : (
-            <ShellSkeleton />
-          )}
+          {!ready && (status === "error" ? <LoadError /> : <ShellSkeleton />)}
+          <div hidden={!ready}>{children}</div>
         </main>
       </div>
 

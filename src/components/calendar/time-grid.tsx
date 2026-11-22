@@ -29,12 +29,13 @@ export function TimeGrid({ days, entries, today, nowMinutes, onPickDay }: Props)
   const openQuickAdd = useUI((s) => s.openQuickAdd);
   const select = useUI((s) => s.select);
   const toggle = useApp((s) => s.toggleEntry);
+  const visible = useApp((s) => s.ready);
   const isWeek = days.length > 1;
 
-  // Começa a rolagem perto das 7h.
+  // Começa a rolagem perto das 7h (só quando a grade está visível; oculta, o scrollTop é ignorado).
   useEffect(() => {
-    if (scroller.current) scroller.current.scrollTop = (7 - START_HOUR) * HOUR_PX - 8;
-  }, []);
+    if (visible && scroller.current) scroller.current.scrollTop = (7 - START_HOUR) * HOUR_PX - 8;
+  }, [visible]);
 
   const byDay = new Map(days.map((d) => [d, entries.filter((e) => e.date === d)]));
   const hasUntimed = entries.some((e) => !e.startTime);
