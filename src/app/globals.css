@@ -1,26 +1,147 @@
 @import "tailwindcss";
 
+/* Tema escuro controlado por data-theme no <html> (definido antes da pintura pelo script do layout). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Cores das categorias — sobrescritas pelas preferências do usuário */
+  --cat-aula: #a8dadc;
+  --cat-pratica: #ffc5a5;
+  --cat-tutoria: #cdb4f6;
+  --cat-estudo: #bde7c3;
+  --cat-pessoal: #ffe29a;
+  --cat-prova: #f8bbd0;
+
+  --bg: #fbf8fa;
+  --surface: #ffffff;
+  --surface-2: #f5f0f3;
+  --border: #ece3e9;
+  --text: #2b2330;
+  --muted: #6b6170;
+  --accent: #b8436f; /* rosa profundo para ações (contraste AA com branco) */
+  --accent-fg: #ffffff;
+  --accent-soft: #f8bbd0;
+  --ink: #2b2330; /* texto sobre fundos pastel */
+  --shadow: 0 1px 2px rgb(43 35 48 / 0.04), 0 6px 20px -8px rgb(43 35 48 / 0.10);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #161217;
+  --surface: #201a22;
+  --surface-2: #29222c;
+  --border: #382f3b;
+  --text: #f4edf2;
+  --muted: #b3a8b6;
+  --accent: #f8bbd0;
+  --accent-fg: #2b2330;
+  --accent-soft: #5a3446;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -10px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-ink: var(--ink);
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --shadow-soft: var(--shadow);
+  --radius-card: 1.25rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* ---------- Superfícies coloridas por categoria ----------
+   Use com style={{ "--c": "var(--cat-aula)" }}.
+   No claro: fundo pastel + tinta escura. No escuro: fundo tingido + texto claro. */
+.tint {
+  background: var(--c);
+  color: var(--ink);
+}
+.tint-soft {
+  background: color-mix(in oklab, var(--c) 32%, var(--surface));
+  color: var(--text);
+}
+.tint-bar {
+  box-shadow: inset 3px 0 0 0 color-mix(in oklab, var(--c) 70%, #000 10%);
+}
+[data-theme="dark"] .tint {
+  background: color-mix(in oklab, var(--c) 38%, var(--surface));
+  color: var(--text);
+}
+[data-theme="dark"] .tint-soft {
+  background: color-mix(in oklab, var(--c) 16%, var(--surface));
+}
+[data-theme="dark"] .tint-bar {
+  box-shadow: inset 3px 0 0 0 var(--c);
+}
+.dot {
+  background: var(--c);
+}
+
+/* ---------- Microanimações ---------- */
+@keyframes pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+@keyframes draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sparkle {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.anim-pop { animation: pop 320ms cubic-bezier(0.3, 0.7, 0.4, 1.4); }
+.anim-draw { stroke-dasharray: 24; animation: draw 280ms ease-out forwards; }
+.anim-sheet { animation: sheet-up 260ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.anim-fade { animation: fade-in 200ms ease-out; }
+.anim-sparkle { animation: sparkle 520ms ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Áreas seguras do iPhone (notch / home indicator) */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* Foco visível e delicado */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
