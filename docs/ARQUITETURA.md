@@ -117,7 +117,7 @@ Regra de ouro: **o parser nunca inventa** — campos não encontrados ficam vazi
 | 2 | ✅ Supabase: schema + RLS + autenticação | Migrações SQL, login, proteção de rotas, repositório Supabase, sincronização | Testes de RLS (usuário anônimo não lê nada), login real |
 | 3 | ✅ Cadastro manual completo | Formulários de evento/tarefa/prova/conteúdo, recorrência, reagendar, reordenar (arrastar) | Testes de formulário e de recorrência com exceções |
 | 4 | ✅ PWA | Manifest, ícones, service worker, ajustes iOS | Lighthouse PWA, instalação no iPhone/Android |
-| 5 | Importação | Texto + PDF, prévia editável, ambiguidades, duplicatas, conflitos, confirmação | Testes do parser com roteiros reais anonimizados |
+| 5 | ✅ Importação | Texto + PDF, prévia editável, ambiguidades, duplicatas, conflitos, confirmação | Testes do parser com roteiros reais anonimizados |
 
 ## 6. Sincronização (Etapa 2)
 

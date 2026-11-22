@@ -34,9 +34,9 @@ export interface RemoteData extends AppData {
 
 export async function fetchAll(sb: SB): Promise<RemoteData> {
   const [items, occ, exams, topics, settings] = await Promise.all([
-    sb.from("items").select("id,kind,title,category,date,start_time,end_time,location,notes,recurrence,done_at,source"),
+    sb.from("items").select("id,kind,title,category,date,start_time,end_time,location,notes,recurrence,done_at,source,import_batch_id"),
     sb.from("item_occurrences").select("item_id,occurrence_date,done,cancelled,move_date,move_start_time,move_end_time"),
-    sb.from("exams").select("id,subject,title,date,start_time,location,notes,source"),
+    sb.from("exams").select("id,subject,title,date,start_time,location,notes,source,import_batch_id"),
     sb.from("exam_topics").select("id,exam_id,title,done,position"),
     sb.from("user_settings").select("category_colors").maybeSingle(),
   ]);
@@ -112,4 +112,56 @@ export async function insertDemo(sb: SB, data: AppData) {
 export async function clearDemo(sb: SB) {
   check(await sb.from("items").delete().eq("source", "ficticio"));
   check(await sb.from("exams").delete().eq("source", "ficticio"));
+}
+
+// ---------------- Importação ----------------
+
+export interface ImportBatchInfo {
+  id: string;
+  sourceType: "texto" | "pdf" | "imagem";
+  fileName: string | null;
+  status: "rascunho" | "confirmado" | "descartado";
+  createdAt: string;
+}
+
+/**
+ * Grava um lote de importação e seus itens/provas/conteúdos.
+ * Se algo falhar no meio, remove o que já tinha sido gravado do lote (para não deixar importação pela metade).
+ */
+export async function insertImport(
+  sb: SB,
+  batch: { id: string; sourceType: ImportBatchInfo["sourceType"]; fileName?: string; rawText: string },
+  items: Item[],
+  exams: Exam[],
+) {
+  check(
+    await sb.from("import_batches").insert({ id: batch.id, source_type: batch.sourceType, file_name: batch.fileName ?? null, raw_text: batch.rawText.slice(0, 200_000), status: "confirmado" }),
+  );
+  try {
+    if (items.length) check(await sb.from("items").insert(items.map(itemToRow)));
+    if (exams.length) check(await sb.from("exams").insert(exams.map(examToRow)));
+    const topics = exams.flatMap((e) => topicsToRows(e.id, e.topics));
+    if (topics.length) check(await sb.from("exam_topics").insert(topics));
+  } catch (e) {
+    await undoImport(sb, batch.id).catch(() => {});
+    throw e;
+  }
+}
+
+export async function listImportBatches(sb: SB): Promise<ImportBatchInfo[]> {
+  const rows = check(await sb.from("import_batches").select("id,source_type,file_name,status,created_at").order("created_at", { ascending: false }).limit(15)) as {
+    id: string;
+    source_type: ImportBatchInfo["sourceType"];
+    file_name: string | null;
+    status: ImportBatchInfo["status"];
+    created_at: string;
+  }[];
+  return rows.map((r) => ({ id: r.id, sourceType: r.source_type, fileName: r.file_name, status: r.status, createdAt: r.created_at }));
+}
+
+/** Desfaz uma importação: remove itens e provas do lote (ocorrências e conteúdos saem em cascata). */
+export async function undoImport(sb: SB, batchId: string) {
+  check(await sb.from("items").delete().eq("import_batch_id", batchId));
+  check(await sb.from("exams").delete().eq("import_batch_id", batchId));
+  check(await sb.from("import_batches").update({ status: "descartado" }).eq("id", batchId));
 }

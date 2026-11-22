@@ -6,6 +6,8 @@ import { buildMockData } from "@/data/mock";
 import { DEFAULT_CATEGORIES } from "@/lib/categories";
 import { reorder } from "@/lib/exams";
 import { reschedule, type RescheduleTarget } from "@/lib/forms";
+import { blockingErrors, candidateToExam, candidateToItem, type ImportPeriod } from "@/lib/import/review";
+import type { ImportCandidate } from "@/lib/import/types";
 import { occurrenceKey } from "@/lib/recurrence";
 import { supabase } from "@/lib/supabase/client";
 import * as repo from "@/lib/supabase/repo";
@@ -50,6 +52,13 @@ export interface AppState {
   deleteItem: (id: string) => void;
   rescheduleEntry: (entry: CalendarEntry, target: RescheduleTarget) => void;
   cancelOccurrence: (entry: CalendarEntry) => void;
+
+  importPlanning: (input: {
+    candidates: ImportCandidate[];
+    period: ImportPeriod;
+    source: { sourceType: "texto" | "pdf" | "imagem"; fileName?: string; rawText: string };
+  }) => Promise<{ batchId: string; items: number; exams: number }>;
+  undoImport: (batchId: string) => Promise<void>;
 
   addExam: (fields: Omit<Exam, "id" | "source" | "topics">, topicTitles: string[]) => string;
   updateExam: (id: string, fields: Omit<Exam, "id" | "source" | "topics">) => void;
@@ -257,6 +266,43 @@ export const useApp = create<AppState>()(
             (s) => ({ overrides: [...s.overrides.filter((o) => occurrenceKey(o.itemId, o.date) !== key), override] }),
             () => repo.upsertOccurrence(supabase(), override),
           );
+        },
+
+        importPlanning: async ({ candidates, period, source }) => {
+          const batchId = newId();
+          const chosen = candidates.filter((c) => c.include && blockingErrors(c).length === 0);
+          const items = chosen.filter((c) => c.kind !== "prova").map((c) => candidateToItem(c, period, newId(), batchId));
+          const exams = chosen.filter((c) => c.kind === "prova").map((c) => candidateToExam(c, newId(), batchId, newId));
+          const before = { items: get().items, exams: get().exams };
+          set((s) => ({ items: [...s.items, ...items], exams: [...s.exams, ...exams], pending: s.pending + 1 }));
+          try {
+            await repo.insertImport(supabase(), { id: batchId, ...source }, items, exams);
+          } catch (e) {
+            set({ ...before, lastError: friendlyError((e as Error).message) });
+            throw e;
+          } finally {
+            set((s) => ({ pending: s.pending - 1 }));
+          }
+          return { batchId, items: items.length, exams: exams.length };
+        },
+
+        undoImport: async (batchId) => {
+          const before = { items: get().items, exams: get().exams, overrides: get().overrides };
+          const removed = new Set(before.items.filter((i) => i.importBatchId === batchId).map((i) => i.id));
+          set((s) => ({
+            items: s.items.filter((i) => i.importBatchId !== batchId),
+            exams: s.exams.filter((e) => e.importBatchId !== batchId),
+            overrides: s.overrides.filter((o) => !removed.has(o.itemId)),
+            pending: s.pending + 1,
+          }));
+          try {
+            await repo.undoImport(supabase(), batchId);
+          } catch (e) {
+            set({ ...before, lastError: friendlyError((e as Error).message) });
+            throw e;
+          } finally {
+            set((s) => ({ pending: s.pending - 1 }));
+          }
         },
 
         addExam: (fields, topicTitles) => {

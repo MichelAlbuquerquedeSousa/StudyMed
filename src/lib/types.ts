@@ -35,6 +35,8 @@ export interface Item {
   /** Conclusão de tarefa avulsa (ISO timestamp). */
   doneAt?: string | null;
   source: DataSource;
+  /** Lote de importação de origem (permite desfazer a importação). */
+  importBatchId?: string;
 }
 
 /** Ajuste de uma ocorrência específica de um item recorrente. */
@@ -62,6 +64,7 @@ export interface Exam {
   notes?: string;
   topics: ExamTopic[];
   source: DataSource;
+  importBatchId?: string;
 }
 
 /** Entrada já resolvida para exibição no calendário / listas. */

@@ -10,7 +10,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:db": "bash scripts/test-db.sh",
-    "check:supabase": "node scripts/check-remote.mjs"
+    "check:supabase": "node scripts/check-remote.mjs",
+    "postinstall": "node scripts/copy-pdf-worker.mjs",
+    "prebuild": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -21,6 +23,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.77.0",
     "next": "16.4.6",
+    "pdfjs-dist": "^6.5.438",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zustand": "^5.1.0"

@@ -15,6 +15,7 @@ export interface ItemRow {
   recurrence: WeeklyRecurrence | null;
   done_at: string | null;
   source: DataSource;
+  import_batch_id?: string | null;
 }
 
 export interface OccurrenceRow {
@@ -36,6 +37,7 @@ export interface ExamRow {
   location: string | null;
   notes: string | null;
   source: DataSource;
+  import_batch_id?: string | null;
 }
 
 export interface TopicRow {
@@ -66,6 +68,7 @@ export function itemFromRow(r: ItemRow): Item {
     recurrence: opt(r.recurrence),
     doneAt: r.done_at,
     source: r.source,
+    ...(r.import_batch_id ? { importBatchId: r.import_batch_id } : {}),
   };
 }
 
@@ -83,6 +86,7 @@ export function itemToRow(i: Item): ItemRow {
     recurrence: i.recurrence ?? null,
     done_at: i.kind === "tarefa" ? (i.doneAt ?? null) : null,
     source: i.source,
+    import_batch_id: i.importBatchId ?? null,
   };
 }
 
@@ -120,6 +124,7 @@ export function examsFromRows(exams: ExamRow[], topics: TopicRow[]): Exam[] {
     location: opt(e.location),
     notes: opt(e.notes),
     source: e.source,
+    ...(e.import_batch_id ? { importBatchId: e.import_batch_id } : {}),
     topics: (byExam.get(e.id) ?? [])
       .sort((a, b) => a.position - b.position)
       .map((t): ExamTopic => ({ id: t.id, title: t.title, done: t.done })),
@@ -136,6 +141,7 @@ export function examToRow(e: Exam): ExamRow {
     location: nul(e.location),
     notes: nul(e.notes),
     source: e.source,
+    import_batch_id: e.importBatchId ?? null,
   };
 }
 

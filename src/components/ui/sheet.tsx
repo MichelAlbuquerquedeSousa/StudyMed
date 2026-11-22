@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 /** Painel que sobe do rodapé no celular e vira diálogo centralizado no tablet/desktop. */
@@ -33,7 +34,8 @@ export function Sheet({
 
   if (!open) return null;
 
-  return (
+  // Portal no <body>: o painel fica acima de tudo, mesmo quando aberto de dentro de uma página.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6">
       <div className="anim-fade absolute inset-0 bg-[rgb(43_35_48/0.28)] backdrop-blur-[2px]" onClick={onClose} aria-hidden />
       <div
@@ -58,6 +60,7 @@ export function Sheet({
         </div>
         <div className="px-5 pt-1 pb-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

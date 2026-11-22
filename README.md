@@ -3,7 +3,7 @@
 Planner acadêmico pessoal (PWA) para a rotina da faculdade de Medicina.
 Next.js 16 · TypeScript · Tailwind CSS 4 · Supabase (a partir da Etapa 2).
 
-> **Etapa atual: 4 — PWA (instalação e uso offline).** Os dados ficam no Supabase,
+> **Versão 1 completa (Etapas 1 a 5).** Os dados ficam no Supabase,
 > protegidos por RLS, e sincronizam entre computador, iPhone e tablet.
 > Configuração passo a passo: [`docs/CONFIGURACAO-SUPABASE.md`](docs/CONFIGURACAO-SUPABASE.md).
 > Publicar e instalar no iPhone/tablet: [`docs/PUBLICAR-E-INSTALAR.md`](docs/PUBLICAR-E-INSTALAR.md).
@@ -33,6 +33,13 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+## Etapa 5
+
+- Importar planejamento por texto colado ou PDF com texto: prévia editável, sinais de dados
+  ambíguos/incompletos, duplicatas e conflitos, confirmação, e desfazer por lote.
+  Detalhes em [`docs/IMPORTACAO.md`](docs/IMPORTACAO.md).
+- "Importar" na barra inferior do celular.
 
 ## Etapa 4
 
