@@ -3,9 +3,10 @@
 Planner acadêmico pessoal (PWA) para a rotina da faculdade de Medicina.
 Next.js 16 · TypeScript · Tailwind CSS 4 · Supabase (a partir da Etapa 2).
 
-> **Etapa atual: 3 — cadastro e edição completos.** Os dados ficam no Supabase,
+> **Etapa atual: 4 — PWA (instalação e uso offline).** Os dados ficam no Supabase,
 > protegidos por RLS, e sincronizam entre computador, iPhone e tablet.
 > Configuração passo a passo: [`docs/CONFIGURACAO-SUPABASE.md`](docs/CONFIGURACAO-SUPABASE.md).
+> Publicar e instalar no iPhone/tablet: [`docs/PUBLICAR-E-INSTALAR.md`](docs/PUBLICAR-E-INSTALAR.md).
 
 Arquitetura, modelo de dados e plano de etapas: [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md).
 
@@ -32,6 +33,17 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+## Etapa 4
+
+- Instalável no iPhone, tablet Samsung e computador: manifest, ícones (incluindo maskable e
+  apple-touch-icon), modo tela cheia e atalhos (Agenda, Tarefas, Provas).
+- Service worker próprio (`public/sw.js`): páginas com rede primeiro e cópia offline; arquivos do
+  Next em cache; Supabase nunca passa pelo cache. Telas principais guardadas após o login.
+- Sem internet: aviso no topo, consulta dos dados salvos; alterações que falham são desfeitas na tela.
+- Aviso de nova versão com botão "Atualizar"; ao sair da conta, o cache do aparelho é apagado.
+- Cabeçalhos de segurança (nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy).
+- Ícones gerados por `node scripts/generate-icons.mjs` a partir de `scripts/icon.svg`.
 
 ## Etapa 3
 

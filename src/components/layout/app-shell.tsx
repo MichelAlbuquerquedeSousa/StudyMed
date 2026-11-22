@@ -24,6 +24,7 @@ import { EntryDetailSheet } from "../tasks/entry-detail-sheet";
 import { ExamFormSheet } from "../exams/exam-form-sheet";
 import { QuickAddSheet } from "../tasks/quick-add-sheet";
 import { RescheduleSheet } from "../tasks/reschedule-sheet";
+import { OfflineBanner, UpdateToast } from "../pwa/pwa";
 import { ThemeSwitcher } from "./theme";
 
 const NAV = [
@@ -81,9 +82,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 pt-[env(safe-area-inset-top)]">
+        <OfflineBanner />
         {demo && ready && <DemoBanner />}
-        <main className="mx-auto w-full max-w-6xl px-4 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-32 sm:px-6 md:pb-12 lg:px-10 lg:pt-8">
+        <main className="mx-auto w-full max-w-6xl px-4 pt-5 pb-32 sm:px-6 md:pb-12 lg:px-10 lg:pt-8">
           {!ready && (status === "error" ? <LoadError /> : <ShellSkeleton />)}
           <div hidden={!ready}>{children}</div>
         </main>
@@ -110,6 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <SyncNotice />
+      <UpdateToast />
       <QuickAddSheet />
       <ExamFormSheet />
       <RescheduleSheet />

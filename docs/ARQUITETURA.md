@@ -116,7 +116,7 @@ Regra de ouro: **o parser nunca inventa** — campos não encontrados ficam vazi
 | 1 | ✅ Interface com dados fictícios | Casco responsivo, tema claro/escuro, Dashboard, Calendário (dia/semana/mês), Tarefas, Provas (checklist + %), personalização de cores | Testes unitários (datas, recorrência, progresso), lint, build, capturas em iPhone/tablet/desktop |
 | 2 | ✅ Supabase: schema + RLS + autenticação | Migrações SQL, login, proteção de rotas, repositório Supabase, sincronização | Testes de RLS (usuário anônimo não lê nada), login real |
 | 3 | ✅ Cadastro manual completo | Formulários de evento/tarefa/prova/conteúdo, recorrência, reagendar, reordenar (arrastar) | Testes de formulário e de recorrência com exceções |
-| 4 | PWA | Manifest, ícones, service worker, ajustes iOS | Lighthouse PWA, instalação no iPhone/Android |
+| 4 | ✅ PWA | Manifest, ícones, service worker, ajustes iOS | Lighthouse PWA, instalação no iPhone/Android |
 | 5 | Importação | Texto + PDF, prévia editável, ambiguidades, duplicatas, conflitos, confirmação | Testes do parser com roteiros reais anonimizados |
 
 ## 6. Sincronização (Etapa 2)

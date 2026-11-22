@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Cloud, FileUp, LogOut, RotateCcw, Sparkles } from "lucide-react";
+import { Cloud, FileUp, LogOut, RotateCcw, Smartphone, Sparkles } from "lucide-react";
+import { InstallCard } from "../pwa/pwa";
 import { contrastRatio, DEFAULT_CATEGORIES, INK } from "@/lib/categories";
 import { TIME_ZONE } from "@/lib/time";
 import { useApp, useHasDemo } from "@/store/app-store";
@@ -76,6 +77,14 @@ export function SettingsView() {
         <Link href="/importar" className="flex items-center gap-3 font-medium">
           <FileUp className="size-5 text-muted" /> Importar planejamento
         </Link>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 flex items-center gap-2 font-semibold">
+          <Smartphone className="size-4 text-muted" /> Instalar no aparelho
+        </h2>
+        <p className="mb-3 text-sm text-muted">Abre em tela cheia, com ícone próprio, e funciona mesmo sem internet com os dados salvos.</p>
+        <InstallCard />
       </Card>
 
       <DemoCard />

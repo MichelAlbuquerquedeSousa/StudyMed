@@ -10,6 +10,7 @@ import { occurrenceKey } from "@/lib/recurrence";
 import { supabase } from "@/lib/supabase/client";
 import * as repo from "@/lib/supabase/repo";
 import { STORE_KEY } from "@/lib/theme-script";
+import { clearOfflinePages, warmOfflinePages } from "@/lib/pwa-client";
 import { todayInTZ } from "@/lib/time";
 import type { CalendarEntry, Category, CategoryKey, Exam, Item, OccurrenceOverride } from "@/lib/types";
 
@@ -85,10 +86,12 @@ export const useApp = create<AppState>()(
     (set, get) => {
       /** Aplica a mudança na tela e grava no servidor; em caso de erro, avisa e recarrega. */
       const mutate = (optimistic: (s: AppState) => Partial<AppState>, remote: () => Promise<void>) => {
+        const { items, overrides, exams, categories } = get();
         set((s) => ({ ...optimistic(s), pending: s.pending + 1 }));
         remote()
           .catch((e: Error) => {
-            set({ lastError: friendlyError(e.message) });
+            // Desfaz a mudança na tela: nada que não foi salvo deve parecer salvo.
+            set({ items, overrides, exams, categories, lastError: friendlyError(e.message) });
             refreshQueued = true;
           })
           .finally(() => {
@@ -148,6 +151,7 @@ export const useApp = create<AppState>()(
               return;
             }
             set({ ...data, status: "ready", lastSyncedAt: Date.now() });
+            if (process.env.NODE_ENV === "production") void warmOfflinePages().catch(() => {});
           } catch (e) {
             set({ status: get().ready ? "ready" : "error", lastError: friendlyError((e as Error).message) });
           }
@@ -155,6 +159,7 @@ export const useApp = create<AppState>()(
 
         signOut: async () => {
           await supabase().auth.signOut();
+          clearOfflinePages();
           set({ userId: null, email: null, items: [], overrides: [], exams: [], categories: DEFAULT_CATEGORIES, ready: false, status: "idle" });
           try {
             localStorage.removeItem(STORE_KEY);

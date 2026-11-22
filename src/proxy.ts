@@ -43,5 +43,5 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Não roda para arquivos estáticos, ícones, manifest e service worker.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|.*\\.(?:png|svg|jpg|jpeg|webp|ico)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|offline.html|.*\\.(?:png|svg|jpg|jpeg|webp|ico)$).*)"],
 };
