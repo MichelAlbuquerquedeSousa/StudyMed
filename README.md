@@ -3,7 +3,7 @@
 Planner acadêmico pessoal (PWA) para a rotina da faculdade de Medicina.
 Next.js 16 · TypeScript · Tailwind CSS 4 · Supabase (a partir da Etapa 2).
 
-> **Etapa atual: 2 — Supabase, login e sincronização.** Os dados ficam no Supabase,
+> **Etapa atual: 3 — cadastro e edição completos.** Os dados ficam no Supabase,
 > protegidos por RLS, e sincronizam entre computador, iPhone e tablet.
 > Configuração passo a passo: [`docs/CONFIGURACAO-SUPABASE.md`](docs/CONFIGURACAO-SUPABASE.md).
 
@@ -32,6 +32,18 @@ npm run lint
 npm run typecheck
 npm run build
 ```
+
+## Etapa 3
+
+- Formulário completo de atividade (criar e editar): tarefa ou evento fixo, categoria, data ou
+  "sem data", horários (a duração é mantida ao mudar o início), local, observações e repetição
+  semanal com data de término.
+- Reagendar: itens avulsos mudam de data/horário; em itens recorrentes há **só esta ocorrência**
+  (reagendar, cancelar o dia, voltar ao horário original) e **toda a série** (editar, excluir).
+  Atalhos "Adiar para amanhã" e "Próxima semana".
+- Provas: criar (colando a lista de conteúdos de uma vez), editar e excluir; o botão + também cria provas.
+- Conteúdos: arrastar pela alça para reordenar (toque, mouse ou teclado: espaço, setas, espaço).
+- Tarefas sem data aparecem em uma seção própria na tela Tarefas.
 
 ## Etapa 2
 

@@ -33,7 +33,9 @@ export function TasksView() {
   }, [items, upcoming, recent, today]);
 
   if (!today) return null;
-  const undated = items.filter((i) => i.kind === "tarefa" && !i.recurrence && !i.date && !i.doneAt);
+  const undated: CalendarEntry[] = items
+    .filter((i) => i.kind === "tarefa" && !i.recurrence && !i.date && (tab === "pendentes" ? !i.doneAt : Boolean(i.doneAt)))
+    .map((i) => ({ key: i.id, kind: "tarefa", title: i.title, category: i.category, date: "", location: i.location, notes: i.notes, done: Boolean(i.doneAt), recurring: false, itemId: i.id, source: i.source }));
 
   const list = tab === "pendentes" ? pending : done;
   const groups = groupByDay(list, today);
@@ -49,7 +51,7 @@ export function TasksView() {
             value={tab}
             onChange={setTab}
             options={[
-              { value: "pendentes", label: "Pendentes", count: pending.length },
+              { value: "pendentes", label: "Pendentes", count: pending.length + items.filter((i) => i.kind === "tarefa" && !i.recurrence && !i.date && !i.doneAt).length },
               { value: "concluidas", label: "Concluídas", count: done.length },
             ]}
           />
@@ -63,6 +65,18 @@ export function TasksView() {
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
+          {undated.length > 0 && (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-muted">
+                Sem data <span className="font-normal tabular-nums opacity-70">· {undated.length}</span>
+              </h2>
+              <ul className="space-y-2">
+                {undated.map((e) => (
+                  <EntryRow key={e.key} entry={e} />
+                ))}
+              </ul>
+            </section>
+          )}
           {groups.map(({ label, entries, alert }) => (
             <section key={label}>
               <h2 className={`mb-2 text-sm font-semibold ${alert ? "text-accent" : "text-muted"}`}>

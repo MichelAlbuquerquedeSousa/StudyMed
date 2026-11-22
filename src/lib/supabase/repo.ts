@@ -82,6 +82,10 @@ export async function insertTopic(sb: SB, examId: string, topic: ExamTopic, posi
   check(await sb.from("exam_topics").insert({ id: topic.id, exam_id: examId, title: topic.title, done: topic.done, position }));
 }
 
+export async function insertTopics(sb: SB, examId: string, topics: ExamTopic[]) {
+  if (topics.length) check(await sb.from("exam_topics").insert(topicsToRows(examId, topics)));
+}
+
 export async function deleteTopic(sb: SB, id: string) {
   check(await sb.from("exam_topics").delete().eq("id", id));
 }

@@ -9,21 +9,36 @@ import type { CalendarEntry, CategoryKey } from "@/lib/types";
 import { useApp, type AppState } from "./app-store";
 
 interface UIState {
-  quickAdd: { open: boolean; date?: ISODate; startTime?: string };
+  /** Formulário de atividade: criação (date/startTime sugeridos) ou edição (itemId). */
+  quickAdd: { open: boolean; date?: ISODate; startTime?: string; itemId?: string };
+  examForm: { open: boolean; examId?: string; date?: ISODate };
+  rescheduling: CalendarEntry | null;
   selected: CalendarEntry | null;
   hidden: CategoryKey[];
   openQuickAdd: (date?: ISODate, startTime?: string) => void;
+  editItem: (itemId: string) => void;
   closeQuickAdd: () => void;
+  openExamForm: (opts?: { examId?: string; date?: ISODate }) => void;
+  closeExamForm: () => void;
+  openReschedule: (entry: CalendarEntry) => void;
+  closeReschedule: () => void;
   select: (e: CalendarEntry | null) => void;
   toggleHidden: (k: CategoryKey) => void;
 }
 
 export const useUI = create<UIState>()((set) => ({
   quickAdd: { open: false },
+  examForm: { open: false },
+  rescheduling: null,
   selected: null,
   hidden: [],
-  openQuickAdd: (date, startTime) => set({ quickAdd: { open: true, date, startTime } }),
+  openQuickAdd: (date, startTime) => set({ quickAdd: { open: true, date, startTime }, selected: null }),
+  editItem: (itemId) => set({ quickAdd: { open: true, itemId }, selected: null }),
   closeQuickAdd: () => set({ quickAdd: { open: false } }),
+  openExamForm: (opts = {}) => set({ examForm: { open: true, ...opts }, quickAdd: { open: false }, selected: null }),
+  closeExamForm: () => set({ examForm: { open: false } }),
+  openReschedule: (entry) => set({ rescheduling: entry, selected: null }),
+  closeReschedule: () => set({ rescheduling: null }),
   select: (selected) => set({ selected }),
   toggleHidden: (k) => set((s) => ({ hidden: s.hidden.includes(k) ? s.hidden.filter((h) => h !== k) : [...s.hidden, k] })),
 }));

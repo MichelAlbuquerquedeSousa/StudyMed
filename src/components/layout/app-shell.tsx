@@ -21,7 +21,9 @@ import { useApp, useHasDemo } from "@/store/app-store";
 import { useSync } from "@/store/use-sync";
 import { useUI } from "@/store/ui-store";
 import { EntryDetailSheet } from "../tasks/entry-detail-sheet";
+import { ExamFormSheet } from "../exams/exam-form-sheet";
 import { QuickAddSheet } from "../tasks/quick-add-sheet";
+import { RescheduleSheet } from "../tasks/reschedule-sheet";
 import { ThemeSwitcher } from "./theme";
 
 const NAV = [
@@ -109,6 +111,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <SyncNotice />
       <QuickAddSheet />
+      <ExamFormSheet />
+      <RescheduleSheet />
       <EntryDetailSheet />
     </div>
   );

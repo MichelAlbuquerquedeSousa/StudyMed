@@ -5,6 +5,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { buildMockData } from "@/data/mock";
 import { DEFAULT_CATEGORIES } from "@/lib/categories";
 import { reorder } from "@/lib/exams";
+import { reschedule, type RescheduleTarget } from "@/lib/forms";
 import { occurrenceKey } from "@/lib/recurrence";
 import { supabase } from "@/lib/supabase/client";
 import * as repo from "@/lib/supabase/repo";
@@ -44,7 +45,14 @@ export interface AppState {
 
   toggleEntry: (entry: CalendarEntry) => void;
   addItem: (item: Omit<Item, "id" | "source">) => void;
+  updateItem: (id: string, data: Omit<Item, "id" | "source">) => void;
   deleteItem: (id: string) => void;
+  rescheduleEntry: (entry: CalendarEntry, target: RescheduleTarget) => void;
+  cancelOccurrence: (entry: CalendarEntry) => void;
+
+  addExam: (fields: Omit<Exam, "id" | "source" | "topics">, topicTitles: string[]) => string;
+  updateExam: (id: string, fields: Omit<Exam, "id" | "source" | "topics">) => void;
+  deleteExam: (id: string) => void;
 
   toggleTopic: (examId: string, topicId: string) => void;
   addTopic: (examId: string, title: string) => void;
@@ -211,6 +219,61 @@ export const useApp = create<AppState>()(
           const item: Item = { ...data, id: newId(), source: "manual" };
           mutate((s) => ({ items: [...s.items, item] }), () => repo.upsertItem(supabase(), item));
         },
+
+        updateItem: (id, data) => {
+          const current = get().items.find((i) => i.id === id);
+          if (!current) return;
+          // Conclusão de tarefa avulsa é preservada; mudar para evento limpa a conclusão.
+          const item: Item = { ...data, id, source: current.source, doneAt: data.kind === "tarefa" ? (current.doneAt ?? null) : null };
+          mutate((s) => ({ items: s.items.map((i) => (i.id === id ? item : i)) }), () => repo.upsertItem(supabase(), item));
+        },
+
+        rescheduleEntry: (entry, target) => {
+          const r = reschedule(entry, get().items, get().overrides, target);
+          if (!r) return;
+          if (r.kind === "item") {
+            mutate((s) => ({ items: s.items.map((i) => (i.id === r.item.id ? r.item : i)) }), () => repo.upsertItem(supabase(), r.item));
+            return;
+          }
+          const key = occurrenceKey(r.override.itemId, r.override.date);
+          mutate(
+            (s) => ({ overrides: [...s.overrides.filter((o) => occurrenceKey(o.itemId, o.date) !== key), r.override] }),
+            () => repo.upsertOccurrence(supabase(), r.override),
+          );
+        },
+
+        cancelOccurrence: (entry) => {
+          if (!entry.itemId || !entry.recurring) return;
+          const date = entry.originalDate ?? entry.date;
+          const key = occurrenceKey(entry.itemId, date);
+          const existing = get().overrides.find((o) => occurrenceKey(o.itemId, o.date) === key);
+          const override: OccurrenceOverride = { ...existing, itemId: entry.itemId, date, cancelled: true };
+          mutate(
+            (s) => ({ overrides: [...s.overrides.filter((o) => occurrenceKey(o.itemId, o.date) !== key), override] }),
+            () => repo.upsertOccurrence(supabase(), override),
+          );
+        },
+
+        addExam: (fields, topicTitles) => {
+          const exam: Exam = { ...fields, id: newId(), source: "manual", topics: topicTitles.map((title) => ({ id: newId(), title, done: false })) };
+          mutate(
+            (s) => ({ exams: [...s.exams, exam] }),
+            async () => {
+              await repo.upsertExam(supabase(), exam);
+              await repo.insertTopics(supabase(), exam.id, exam.topics);
+            },
+          );
+          return exam.id;
+        },
+
+        updateExam: (id, fields) => {
+          const current = get().exams.find((e) => e.id === id);
+          if (!current) return;
+          const exam: Exam = { ...current, ...fields, id, source: current.source, topics: current.topics };
+          mutate((s) => ({ exams: s.exams.map((e) => (e.id === id ? exam : e)) }), () => repo.upsertExam(supabase(), exam));
+        },
+
+        deleteExam: (id) => mutate((s) => ({ exams: s.exams.filter((e) => e.id !== id) }), () => repo.deleteExam(supabase(), id)),
 
         deleteItem: (id) =>
           mutate(

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import clsx from "clsx";
-import { ChevronDown, Clock, GraduationCap, MapPin } from "lucide-react";
+import { ChevronDown, Clock, GraduationCap, MapPin, Plus } from "lucide-react";
+import { useUI } from "@/store/ui-store";
 import { countdownLabel, daysUntil, pastExams, topicProgress, upcomingExams, urgency } from "@/lib/exams";
 import { capitalize, formatLongDate, type ISODate } from "@/lib/time";
 import type { Exam } from "@/lib/types";
@@ -17,6 +18,7 @@ export function ExamsView() {
   const now = useNow();
   const exams = useApp((s) => s.exams);
   const [showPast, setShowPast] = useState(false);
+  const openExamForm = useUI((s) => s.openExamForm);
   const today = now?.today ?? null;
   const upcoming = useMemo(() => (today ? upcomingExams(exams, today) : []), [exams, today]);
   const past = useMemo(() => (today ? pastExams(exams, today) : []), [exams, today]);
@@ -24,9 +26,17 @@ export function ExamsView() {
 
   return (
     <div>
-      <PageHeader title="Provas" subtitle="Próximas avaliações em ordem cronológica" />
+      <PageHeader
+        title="Provas"
+        subtitle="Próximas avaliações em ordem cronológica"
+        actions={
+          <button type="button" onClick={() => openExamForm()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-accent px-5 font-semibold text-accent-fg">
+            <Plus className="size-5" /> Nova prova
+          </button>
+        }
+      />
       {upcoming.length === 0 ? (
-        <EmptyState icon={<GraduationCap className="size-6" />} title="Nenhuma prova marcada" text="O cadastro de provas chega na Etapa 3." />
+        <EmptyState icon={<GraduationCap className="size-6" />} title="Nenhuma prova marcada" text="Toque em “Nova prova” para cadastrar a primeira." />
       ) : (
         <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {upcoming.map((e, i) => (

@@ -3,11 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import clsx from "clsx";
-import { ArrowDown, ArrowLeft, ArrowUp, Clock, MapPin, PartyPopper, Plus, StickyNote, Trash2 } from "lucide-react";
+import { closestCenter, DndContext, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ArrowLeft, Clock, GripVertical, MapPin, PartyPopper, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
 import { countdownLabel, daysUntil, topicProgress } from "@/lib/exams";
 import { capitalize, formatLongDate } from "@/lib/time";
 import type { ExamTopic } from "@/lib/types";
 import { useApp } from "@/store/app-store";
+import { useUI } from "@/store/ui-store";
+import { useRouter } from "next/navigation";
 import { useNow } from "@/store/use-now";
 import { Card, EmptyState } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
@@ -18,6 +23,15 @@ export function ExamDetail({ id }: { id: string }) {
   const now = useNow();
   const exam = useApp((s) => s.exams.find((e) => e.id === id));
   const addTopic = useApp((s) => s.addTopic);
+  const moveTopic = useApp((s) => s.moveTopic);
+  const deleteExam = useApp((s) => s.deleteExam);
+  const openExamForm = useUI((s) => s.openExamForm);
+  const router = useRouter();
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(TouchSensor, { activationConstraint: { delay: 120, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const [draft, setDraft] = useState("");
 
   if (!now) return null;
@@ -35,7 +49,29 @@ export function ExamDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-5">
-      <BackLink />
+      <div className="flex items-center justify-between gap-2">
+        <BackLink />
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => openExamForm({ examId: exam.id })}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted hover:bg-surface-2 hover:text-fg"
+          >
+            <Pencil className="size-4" /> Editar
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!confirm(`Excluir “${exam.title}” e todos os seus conteúdos?`)) return;
+              deleteExam(exam.id);
+              router.push("/provas");
+            }}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted hover:bg-surface-2 hover:text-fg"
+          >
+            <Trash2 className="size-4" /> Excluir
+          </button>
+        </div>
+      </div>
 
       <header className="tint relative overflow-hidden rounded-[1.75rem] p-6 shadow-soft md:p-8" style={catVar("prova")}>
         <span aria-hidden className="absolute -right-16 -bottom-24 size-72 rounded-full bg-white/25 dark:bg-white/5" />
@@ -85,9 +121,30 @@ export function ExamDetail({ id }: { id: string }) {
           )}
 
           <ol className="space-y-1.5">
-            {exam.topics.map((t, i) => (
-              <TopicRow key={t.id} examId={exam.id} topic={t} index={i} last={i === exam.topics.length - 1} />
-            ))}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={({ active, over }: DragEndEvent) => {
+                if (!over || active.id === over.id) return;
+                const ids = exam.topics.map((t) => t.id);
+                moveTopic(exam.id, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+              }}
+              accessibility={{
+                screenReaderInstructions: { draggable: "Pressione espaço para pegar o conteúdo, use as setas para mover e espaço para soltar." },
+                announcements: {
+                  onDragStart: () => "Conteúdo selecionado.",
+                  onDragOver: () => "Movendo.",
+                  onDragEnd: () => "Conteúdo reposicionado.",
+                  onDragCancel: () => "Movimento cancelado.",
+                },
+              }}
+            >
+              <SortableContext items={exam.topics.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                {exam.topics.map((t) => (
+                  <TopicRow key={t.id} examId={exam.id} topic={t} />
+                ))}
+              </SortableContext>
+            </DndContext>
           </ol>
 
           <form
@@ -110,7 +167,7 @@ export function ExamDetail({ id }: { id: string }) {
               <Plus className="size-5" />
             </button>
           </form>
-          <p className="mt-2 text-xs text-muted md:hidden">Toque em um conteúdo para editar, mover ou excluir.</p>
+          <p className="mt-2 text-xs text-muted md:hidden">Toque em um conteúdo para editar ou excluir; arraste pela alça ⋮⋮ para reordenar.</p>
         </Card>
 
         <aside className="space-y-5">
@@ -122,18 +179,18 @@ export function ExamDetail({ id }: { id: string }) {
               <p className="text-sm leading-relaxed">{exam.notes}</p>
             </Card>
           )}
-          {exam.source === "ficticio" && <p className="px-1 text-xs text-muted">Prova fictícia de demonstração. Cadastro e edição completos na Etapa 3.</p>}
+          {exam.source === "ficticio" && <p className="px-1 text-xs text-muted">Prova fictícia de demonstração.</p>}
         </aside>
       </div>
     </div>
   );
 }
 
-function TopicRow({ examId, topic, index, last }: { examId: string; topic: ExamTopic; index: number; last: boolean }) {
+function TopicRow({ examId, topic }: { examId: string; topic: ExamTopic }) {
   const toggle = useApp((s) => s.toggleTopic);
   const rename = useApp((s) => s.renameTopic);
   const remove = useApp((s) => s.deleteTopic);
-  const move = useApp((s) => s.moveTopic);
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: topic.id });
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(topic.title);
 
@@ -144,7 +201,15 @@ function TopicRow({ examId, topic, index, last }: { examId: string; topic: ExamT
   };
 
   return (
-    <li className={clsx("group flex items-center gap-1 rounded-2xl pr-1 transition-colors hover:bg-surface-2", topic.done && "text-muted")}>
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={clsx(
+        "group relative flex items-center gap-1 rounded-2xl bg-surface pr-1 transition-colors hover:bg-surface-2",
+        topic.done && "text-muted",
+        isDragging && "z-10 shadow-soft ring-2 ring-[var(--cat-prova)]",
+      )}
+    >
       <Checkbox checked={topic.done} onChange={() => toggle(examId, topic.id)} label={topic.title} category="prova" />
       {editing ? (
         <input
@@ -170,16 +235,20 @@ function TopicRow({ examId, topic, index, last }: { examId: string; topic: ExamT
         </button>
       )}
       <div className={clsx("items-center transition-opacity md:flex md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100", editing ? "flex" : "hidden")} data-topic-actions>
-        <SmallBtn label="Mover para cima" disabled={index === 0} onClick={() => move(examId, index, index - 1)}>
-          <ArrowUp className="size-4" />
-        </SmallBtn>
-        <SmallBtn label="Mover para baixo" disabled={last} onClick={() => move(examId, index, index + 1)}>
-          <ArrowDown className="size-4" />
-        </SmallBtn>
         <SmallBtn label="Excluir conteúdo" onClick={() => confirm(`Excluir “${topic.title}”?`) && remove(examId, topic.id)}>
           <Trash2 className="size-4" />
         </SmallBtn>
       </div>
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Arrastar para reordenar: ${topic.title}`}
+        className="grid size-9 shrink-0 cursor-grab touch-none place-items-center rounded-full text-muted/70 hover:bg-surface hover:text-fg active:cursor-grabbing"
+      >
+        <GripVertical className="size-4" />
+      </button>
     </li>
   );
 }
