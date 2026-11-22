@@ -1,5 +1,5 @@
 export const THEME_KEY = "studymed-theme";
-export const STORE_KEY = "studymed-demo-v1";
+export const STORE_KEY = "studymed-cache-v2";
 
 /** Script executado no <head>, antes da primeira pintura: aplica tema e cores salvas (evita "piscar"). */
 export const PRE_PAINT_SCRIPT = `(function(){try{

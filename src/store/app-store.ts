@@ -6,25 +6,41 @@ import { buildMockData } from "@/data/mock";
 import { DEFAULT_CATEGORIES } from "@/lib/categories";
 import { reorder } from "@/lib/exams";
 import { occurrenceKey } from "@/lib/recurrence";
-import { todayInTZ } from "@/lib/time";
+import { supabase } from "@/lib/supabase/client";
+import * as repo from "@/lib/supabase/repo";
 import { STORE_KEY } from "@/lib/theme-script";
+import { todayInTZ } from "@/lib/time";
 import type { CalendarEntry, Category, CategoryKey, Exam, Item, OccurrenceOverride } from "@/lib/types";
 
 /**
- * Etapa 1: estado local (localStorage) com dados fictícios.
- * Etapa 2: as ações passarão a chamar um repositório Supabase, mantendo a mesma interface
- * para as telas (atualização otimista + sincronização).
+ * Estado do app.
+ * - Leituras: tudo é carregado do Supabase (RLS garante que só vêm os dados da usuária logada)
+ *   e guardado em cache local para abrir rápido, inclusive sem internet.
+ * - Escritas: atualização otimista na tela + gravação no Supabase. Se a gravação falhar,
+ *   mostramos o erro e recarregamos do servidor (que é a fonte da verdade).
  */
+export type LoadStatus = "idle" | "loading" | "ready" | "error";
+
 export interface AppState {
+  status: LoadStatus;
   ready: boolean;
-  demo: boolean;
+  userId: string | null;
+  email: string | null;
   items: Item[];
   overrides: OccurrenceOverride[];
   exams: Exam[];
   categories: Category[];
+  pending: number;
+  lastError: string | null;
+  lastSyncedAt: number | null;
 
-  init: () => void;
-  resetDemo: () => void;
+  init: () => Promise<void>;
+  refresh: () => Promise<void>;
+  signOut: () => Promise<void>;
+  dismissError: () => void;
+
+  loadDemo: () => Promise<void>;
+  clearDemo: () => Promise<void>;
 
   toggleEntry: (entry: CalendarEntry) => void;
   addItem: (item: Omit<Item, "id" | "source">) => void;
@@ -40,104 +56,238 @@ export interface AppState {
   resetCategoryColors: () => void;
 }
 
-export const newId = () =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
+export const newId = () => crypto.randomUUID();
 
-const updateExam = (exams: Exam[], examId: string, fn: (e: Exam) => Exam) =>
-  exams.map((e) => (e.id === examId ? fn(e) : e));
+const updateExam = (exams: Exam[], examId: string, fn: (e: Exam) => Exam) => exams.map((e) => (e.id === examId ? fn(e) : e));
+
+/** Mensagens de erro em português para os casos mais comuns. */
+export function friendlyError(message: string): string {
+  if (/fetch|network|Failed to fetch|NetworkError|Load failed/i.test(message)) return "Sem conexão. A alteração não foi salva.";
+  if (/JWT|token|session|not authenticated/i.test(message)) return "Sua sessão expirou. Entre novamente.";
+  if (/row-level security|permission denied/i.test(message)) return "Sem permissão para salvar esta alteração.";
+  if (/schema cache|does not exist/i.test(message)) return "As tabelas do banco ainda não foram criadas (rode o SQL da migração).";
+  return `Não foi possível salvar: ${message}`;
+}
+
+let refreshQueued = false;
+let colorTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useApp = create<AppState>()(
   persist(
-    (set, get) => ({
-      ready: false,
-      demo: true,
-      items: [],
-      overrides: [],
-      exams: [],
-      categories: DEFAULT_CATEGORIES,
+    (set, get) => {
+      /** Aplica a mudança na tela e grava no servidor; em caso de erro, avisa e recarrega. */
+      const mutate = (optimistic: (s: AppState) => Partial<AppState>, remote: () => Promise<void>) => {
+        set((s) => ({ ...optimistic(s), pending: s.pending + 1 }));
+        remote()
+          .catch((e: Error) => {
+            set({ lastError: friendlyError(e.message) });
+            refreshQueued = true;
+          })
+          .finally(() => {
+            set((s) => ({ pending: s.pending - 1 }));
+            if (get().pending === 0 && refreshQueued) {
+              refreshQueued = false;
+              void get().refresh();
+            }
+          });
+      };
 
-      init: () => {
-        if (get().items.length === 0 && get().exams.length === 0) {
-          set({ ...buildMockData(todayInTZ()), demo: true });
-        }
-        set({ ready: true });
-      },
+      return {
+        status: "idle",
+        ready: false,
+        userId: null,
+        email: null,
+        items: [],
+        overrides: [],
+        exams: [],
+        categories: DEFAULT_CATEGORIES,
+        pending: 0,
+        lastError: null,
+        lastSyncedAt: null,
 
-      resetDemo: () => set({ ...buildMockData(todayInTZ()), demo: true, categories: DEFAULT_CATEGORIES }),
-
-      toggleEntry: (entry) => {
-        if (entry.kind !== "tarefa" || !entry.itemId) return;
-        if (!entry.recurring) {
-          set((s) => ({
-            items: s.items.map((i) =>
-              i.id === entry.itemId ? { ...i, doneAt: i.doneAt ? null : new Date().toISOString() } : i,
-            ),
-          }));
-          return;
-        }
-        const date = entry.originalDate ?? entry.date;
-        const key = occurrenceKey(entry.itemId, date);
-        set((s) => {
-          const existing = s.overrides.find((o) => occurrenceKey(o.itemId, o.date) === key);
-          if (existing) {
-            return { overrides: s.overrides.map((o) => (o === existing ? { ...o, done: !o.done } : o)) };
+        init: async () => {
+          if (get().status === "loading") return;
+          try {
+            localStorage.removeItem("studymed-demo-v1"); // cache da Etapa 1
+          } catch {}
+          await useApp.persist.rehydrate();
+          const { data } = await supabase().auth.getSession();
+          const user = data.session?.user;
+          if (!user) {
+            set({ status: "ready", ready: true });
+            return;
           }
-          return { overrides: [...s.overrides, { itemId: entry.itemId!, date, done: true }] };
-        });
-      },
+          // Cache de outra conta: descarta.
+          if (get().userId && get().userId !== user.id) {
+            set({ items: [], overrides: [], exams: [], categories: DEFAULT_CATEGORIES });
+          }
+          const hasCache = get().userId === user.id;
+          set({ userId: user.id, email: user.email ?? null, status: "loading", ready: hasCache });
+          await get().refresh();
+          set({ ready: true });
+        },
 
-      addItem: (item) => set((s) => ({ items: [...s.items, { ...item, id: newId(), source: "manual" }] })),
+        refresh: async () => {
+          if (!get().userId) return;
+          if (get().pending > 0) {
+            refreshQueued = true; // evita sobrescrever alterações otimistas ainda em envio
+            return;
+          }
+          try {
+            const data = await repo.fetchAll(supabase());
+            if (get().pending > 0) {
+              refreshQueued = true;
+              return;
+            }
+            set({ ...data, status: "ready", lastSyncedAt: Date.now() });
+          } catch (e) {
+            set({ status: get().ready ? "ready" : "error", lastError: friendlyError((e as Error).message) });
+          }
+        },
 
-      deleteItem: (id) =>
-        set((s) => ({ items: s.items.filter((i) => i.id !== id), overrides: s.overrides.filter((o) => o.itemId !== id) })),
+        signOut: async () => {
+          await supabase().auth.signOut();
+          set({ userId: null, email: null, items: [], overrides: [], exams: [], categories: DEFAULT_CATEGORIES, ready: false, status: "idle" });
+          try {
+            localStorage.removeItem(STORE_KEY);
+          } catch {}
+          // Recarga completa de propósito: o proxy precisa reler os cookies da sessão.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+          window.location.assign("/login");
+        },
 
-      toggleTopic: (examId, topicId) =>
-        set((s) => ({
-          exams: updateExam(s.exams, examId, (e) => ({
-            ...e,
-            topics: e.topics.map((t) => (t.id === topicId ? { ...t, done: !t.done } : t)),
-          })),
-        })),
+        dismissError: () => set({ lastError: null }),
 
-      addTopic: (examId, title) =>
-        set((s) => ({
-          exams: updateExam(s.exams, examId, (e) => ({
-            ...e,
-            topics: [...e.topics, { id: newId(), title: title.trim(), done: false }],
-          })),
-        })),
+        loadDemo: async () => {
+          const data = buildMockData(todayInTZ());
+          set((s) => ({ items: [...s.items, ...data.items], overrides: [...s.overrides, ...data.overrides], exams: [...s.exams, ...data.exams] }));
+          try {
+            await repo.insertDemo(supabase(), data);
+          } catch (e) {
+            set({ lastError: friendlyError((e as Error).message) });
+          }
+          await get().refresh();
+        },
 
-      renameTopic: (examId, topicId, title) =>
-        set((s) => ({
-          exams: updateExam(s.exams, examId, (e) => ({
-            ...e,
-            topics: e.topics.map((t) => (t.id === topicId ? { ...t, title: title.trim() } : t)),
-          })),
-        })),
+        clearDemo: async () => {
+          const demoItems = new Set(get().items.filter((i) => i.source === "ficticio").map((i) => i.id));
+          set((s) => ({
+            items: s.items.filter((i) => i.source !== "ficticio"),
+            overrides: s.overrides.filter((o) => !demoItems.has(o.itemId)),
+            exams: s.exams.filter((e) => e.source !== "ficticio"),
+          }));
+          try {
+            await repo.clearDemo(supabase());
+          } catch (e) {
+            set({ lastError: friendlyError((e as Error).message) });
+          }
+          await get().refresh();
+        },
 
-      deleteTopic: (examId, topicId) =>
-        set((s) => ({
-          exams: updateExam(s.exams, examId, (e) => ({ ...e, topics: e.topics.filter((t) => t.id !== topicId) })),
-        })),
+        toggleEntry: (entry) => {
+          if (entry.kind !== "tarefa" || !entry.itemId) return;
+          const itemId = entry.itemId;
+          if (!entry.recurring) {
+            const item = get().items.find((i) => i.id === itemId);
+            if (!item) return;
+            const doneAt = item.doneAt ? null : new Date().toISOString();
+            mutate(
+              (s) => ({ items: s.items.map((i) => (i.id === itemId ? { ...i, doneAt } : i)) }),
+              () => repo.setItemDone(supabase(), itemId, doneAt),
+            );
+            return;
+          }
+          const date = entry.originalDate ?? entry.date;
+          const key = occurrenceKey(itemId, date);
+          const existing = get().overrides.find((o) => occurrenceKey(o.itemId, o.date) === key);
+          const next: OccurrenceOverride = existing ? { ...existing, done: !existing.done } : { itemId, date, done: true };
+          mutate(
+            (s) => ({ overrides: existing ? s.overrides.map((o) => (o === existing ? next : o)) : [...s.overrides, next] }),
+            () => repo.upsertOccurrence(supabase(), next),
+          );
+        },
 
-      moveTopic: (examId, from, to) =>
-        set((s) => ({ exams: updateExam(s.exams, examId, (e) => ({ ...e, topics: reorder(e.topics, from, to) })) })),
+        addItem: (data) => {
+          const item: Item = { ...data, id: newId(), source: "manual" };
+          mutate((s) => ({ items: [...s.items, item] }), () => repo.upsertItem(supabase(), item));
+        },
 
-      setCategoryColor: (key, color) =>
-        set((s) => ({ categories: s.categories.map((c) => (c.key === key ? { ...c, color } : c)) })),
+        deleteItem: (id) =>
+          mutate(
+            (s) => ({ items: s.items.filter((i) => i.id !== id), overrides: s.overrides.filter((o) => o.itemId !== id) }),
+            () => repo.deleteItem(supabase(), id),
+          ),
 
-      resetCategoryColors: () => set({ categories: DEFAULT_CATEGORIES }),
-    }),
+        toggleTopic: (examId, topicId) => {
+          const topic = get().exams.find((e) => e.id === examId)?.topics.find((t) => t.id === topicId);
+          if (!topic) return;
+          const done = !topic.done;
+          mutate(
+            (s) => ({ exams: updateExam(s.exams, examId, (e) => ({ ...e, topics: e.topics.map((t) => (t.id === topicId ? { ...t, done } : t)) })) }),
+            () => repo.updateTopic(supabase(), topicId, { done }),
+          );
+        },
+
+        addTopic: (examId, title) => {
+          const exam = get().exams.find((e) => e.id === examId);
+          if (!exam || !title.trim()) return;
+          const topic = { id: newId(), title: title.trim(), done: false };
+          const position = exam.topics.length;
+          mutate(
+            (s) => ({ exams: updateExam(s.exams, examId, (e) => ({ ...e, topics: [...e.topics, topic] })) }),
+            () => repo.insertTopic(supabase(), examId, topic, position),
+          );
+        },
+
+        renameTopic: (examId, topicId, title) => {
+          const clean = title.trim();
+          if (!clean) return;
+          mutate(
+            (s) => ({ exams: updateExam(s.exams, examId, (e) => ({ ...e, topics: e.topics.map((t) => (t.id === topicId ? { ...t, title: clean } : t)) })) }),
+            () => repo.updateTopic(supabase(), topicId, { title: clean }),
+          );
+        },
+
+        deleteTopic: (examId, topicId) =>
+          mutate(
+            (s) => ({ exams: updateExam(s.exams, examId, (e) => ({ ...e, topics: e.topics.filter((t) => t.id !== topicId) })) }),
+            () => repo.deleteTopic(supabase(), topicId),
+          ),
+
+        moveTopic: (examId, from, to) => {
+          const exam = get().exams.find((e) => e.id === examId);
+          if (!exam) return;
+          const topics = reorder(exam.topics, from, to);
+          if (topics === exam.topics) return;
+          mutate((s) => ({ exams: updateExam(s.exams, examId, (e) => ({ ...e, topics })) }), () => repo.saveTopicOrder(supabase(), examId, topics));
+        },
+
+        setCategoryColor: (key, color) => {
+          set((s) => ({ categories: s.categories.map((c) => (c.key === key ? { ...c, color } : c)) }));
+          // O seletor de cor dispara muitas mudanças seguidas: grava só a última.
+          if (colorTimer) clearTimeout(colorTimer);
+          colorTimer = setTimeout(() => {
+            const categories = get().categories;
+            mutate(() => ({}), () => repo.saveCategoryColors(supabase(), categories));
+          }, 600);
+        },
+
+        resetCategoryColors: () =>
+          mutate(() => ({ categories: DEFAULT_CATEGORIES }), () => repo.saveCategoryColors(supabase(), DEFAULT_CATEGORIES)),
+      };
+    },
     {
       name: STORE_KEY,
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      partialize: ({ demo, items, overrides, exams, categories }) => ({ demo, items, overrides, exams, categories }),
+      partialize: ({ userId, items, overrides, exams, categories }) => ({ userId, items, overrides, exams, categories }),
     },
   ),
 );
+
+export function useHasDemo(): boolean {
+  return useApp((s) => s.items.some((i) => i.source === "ficticio") || s.exams.some((e) => e.source === "ficticio"));
+}
 
 export function useCategory(key: CategoryKey): Category {
   return useApp((s) => s.categories.find((c) => c.key === key) ?? DEFAULT_CATEGORIES[0]);

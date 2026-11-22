@@ -1,5 +1,5 @@
 /**
- * ⚠️ DADOS FICTÍCIOS — usados apenas na Etapa 1 (demonstração da interface).
+ * ⚠️ DADOS FICTÍCIOS — exemplo opcional que pode ser carregado e removido em Ajustes.
  * Todas as entradas têm `source: "ficticio"` e as datas são geradas a partir de "hoje",
  * para que a demonstração sempre pareça preenchida.
  */
@@ -12,7 +12,7 @@ export interface AppData {
   exams: Exam[];
 }
 
-export function buildMockData(today: ISODate): AppData {
+export function buildMockData(today: ISODate, makeId: () => string = () => crypto.randomUUID()): AppData {
   const monday = startOfWeek(today);
   const recurrence = (weekdays: number[]) => ({
     freq: "weekly" as const,
@@ -20,8 +20,9 @@ export function buildMockData(today: ISODate): AppData {
     startsOn: addDays(monday, -28),
     endsOn: addDays(monday, 140),
   });
-  let n = 0;
-  const id = (p: string) => `demo-${p}-${++n}`;
+  // O prefixo só documenta o tipo; o id real é um UUID (exigido pelo banco).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const id = (_kind: string) => makeId();
 
   const items: Item[] = [
     // Aulas
@@ -58,7 +59,7 @@ export function buildMockData(today: ISODate): AppData {
 
   const exams: Exam[] = [
     {
-      id: "demo-prova-anatomia",
+      id: id("prova"),
       subject: "Anatomia II",
       title: "N1 — Anatomia II",
       date: addDays(today, 5),
@@ -72,7 +73,7 @@ export function buildMockData(today: ISODate): AppData {
       source: "ficticio",
     },
     {
-      id: "demo-prova-fisiologia",
+      id: id("prova"),
       subject: "Fisiologia Humana",
       title: "N1 — Fisiologia",
       date: addDays(today, 12),
@@ -82,7 +83,7 @@ export function buildMockData(today: ISODate): AppData {
       source: "ficticio",
     },
     {
-      id: "demo-prova-bioquimica",
+      id: id("prova"),
       subject: "Bioquímica Metabólica",
       title: "N1 — Bioquímica",
       date: addDays(today, 26),
@@ -92,7 +93,7 @@ export function buildMockData(today: ISODate): AppData {
       source: "ficticio",
     },
     {
-      id: "demo-prova-histologia",
+      id: id("prova"),
       subject: "Histologia",
       title: "Prova prática — Histologia",
       date: addDays(today, -4),

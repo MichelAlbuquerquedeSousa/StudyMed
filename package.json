@@ -8,9 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:db": "bash scripts/test-db.sh",
+    "check:supabase": "node scripts/check-remote.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.2",
     "clsx": "^2.1.1",
     "lucide-react": "^1.77.0",
     "next": "16.4.6",

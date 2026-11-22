@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import clsx from "clsx";
-import { CalendarDays, CheckCheck, Clock, FileUp, GraduationCap, ListChecks, MapPin, Sun } from "lucide-react";
+import { CalendarDays, CheckCheck, Clock, FileUp, GraduationCap, ListChecks, MapPin, Plus, Sparkles, Sun } from "lucide-react";
+import { useState } from "react";
 import { countdownLabel, daysUntil, overallProgress, topicProgress, upcomingExams, urgency } from "@/lib/exams";
 import { overdueTasks } from "@/lib/recurrence";
 import { addDays, capitalize, formatLongDate, formatShortDate, formatWeekdayShort, greeting, timeToMinutes } from "@/lib/time";
@@ -28,6 +29,7 @@ export function Dashboard() {
   const overdue = useMemo(() => (today ? overdueTasks(items, today) : []), [items, today]);
 
   if (!now || !today) return null;
+  if (items.length === 0 && exams.length === 0) return <Welcome greetingText={greeting(now.minutes)} today={today} />;
 
   const schedule = todayEntries.filter((e) => e.startTime);
   const todayTasks = todayEntries.filter((e) => e.kind === "tarefa");
@@ -284,6 +286,49 @@ function Group({ title, tone, children }: { title: string; tone?: "alert"; child
     <div>
       <h3 className={clsx("mb-1.5 text-xs font-semibold tracking-wide uppercase", tone === "alert" ? "text-accent" : "text-muted")}>{title}</h3>
       <ul className="space-y-2">{children}</ul>
+    </div>
+  );
+}
+
+/** Primeira visita: agenda vazia. */
+function Welcome({ greetingText, today }: { greetingText: string; today: string }) {
+  const openQuickAdd = useUI((s) => s.openQuickAdd);
+  const loadDemo = useApp((s) => s.loadDemo);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="space-y-6">
+      <header>
+        <p className="text-sm font-medium text-muted">{capitalize(formatLongDate(today))}</p>
+        <h1 className="font-display text-[2.1rem] leading-tight font-medium tracking-tight md:text-5xl">{greetingText}</h1>
+      </header>
+      <Card className="text-center md:p-10">
+        <div className="mx-auto mb-4 flex w-fit gap-2" aria-hidden>
+          {(["aula", "pratica", "tutoria", "estudo", "pessoal", "prova"] as const).map((k) => (
+            <span key={k} className="dot size-3 rounded-full" style={catVar(k)} />
+          ))}
+        </div>
+        <h2 className="text-xl font-semibold">Sua agenda está vazia</h2>
+        <p className="mx-auto mt-1 max-w-md text-muted">
+          Comece adicionando seus horários da faculdade, ou carregue dados de exemplo para conhecer o app (você pode removê-los depois em Ajustes).
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <button type="button" onClick={() => openQuickAdd()} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-accent px-6 font-semibold text-accent-fg">
+            <Plus className="size-5" /> Adicionar atividade
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await loadDemo();
+              setBusy(false);
+            }}
+            className="inline-flex min-h-12 items-center gap-2 rounded-full border border-line px-6 font-medium hover:bg-surface-2 disabled:opacity-60"
+          >
+            <Sparkles className="size-5" /> {busy ? "Carregando…" : "Carregar dados de exemplo"}
+          </button>
+        </div>
+      </Card>
     </div>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FileUp, RotateCcw } from "lucide-react";
+import { useState } from "react";
+import { Cloud, FileUp, LogOut, RotateCcw, Sparkles } from "lucide-react";
 import { contrastRatio, DEFAULT_CATEGORIES, INK } from "@/lib/categories";
 import { TIME_ZONE } from "@/lib/time";
-import { useApp } from "@/store/app-store";
+import { useApp, useHasDemo } from "@/store/app-store";
 import { ThemeSwitcher } from "../layout/theme";
 import { Card, PageHeader } from "../ui/card";
 import { CATEGORY_ICONS, catVar } from "../ui/icons";
@@ -77,10 +78,74 @@ export function SettingsView() {
         </Link>
       </Card>
 
-      <Card>
-        <h2 className="mb-1 font-semibold">Conta e sincronização</h2>
-        <p className="text-sm text-muted">Login privado e sincronização entre computador, iPhone e tablet chegam na Etapa 2 (Supabase).</p>
-      </Card>
+      <DemoCard />
+      <AccountCard />
     </div>
+  );
+}
+
+function DemoCard() {
+  const hasDemo = useHasDemo();
+  const loadDemo = useApp((s) => s.loadDemo);
+  const clearDemo = useApp((s) => s.clearDemo);
+  const [busy, setBusy] = useState(false);
+  const run = (fn: () => Promise<void>) => async () => {
+    setBusy(true);
+    await fn();
+    setBusy(false);
+  };
+  return (
+    <Card>
+      <h2 className="mb-1 flex items-center gap-2 font-semibold">
+        <Sparkles className="size-4 text-muted" /> Dados de exemplo
+      </h2>
+      <p className="mb-3 text-sm text-muted">
+        Aulas, tarefas e provas fictícias para explorar o app. Ficam marcadas como fictícias e podem ser removidas sem afetar seus dados reais.
+      </p>
+      {hasDemo ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => confirm("Remover todos os dados fictícios?") && run(clearDemo)()}
+          className="min-h-11 rounded-full border border-line px-4 text-sm font-medium hover:bg-surface-2 disabled:opacity-60"
+        >
+          {busy ? "Removendo…" : "Remover dados de exemplo"}
+        </button>
+      ) : (
+        <button type="button" disabled={busy} onClick={run(loadDemo)} className="min-h-11 rounded-full border border-line px-4 text-sm font-medium hover:bg-surface-2 disabled:opacity-60">
+          {busy ? "Carregando…" : "Carregar dados de exemplo"}
+        </button>
+      )}
+    </Card>
+  );
+}
+
+function AccountCard() {
+  const email = useApp((s) => s.email);
+  const lastSyncedAt = useApp((s) => s.lastSyncedAt);
+  const pending = useApp((s) => s.pending);
+  const signOut = useApp((s) => s.signOut);
+  const synced = lastSyncedAt
+    ? new Intl.DateTimeFormat("pt-BR", { timeZone: TIME_ZONE, hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }).format(lastSyncedAt)
+    : null;
+  return (
+    <Card>
+      <h2 className="mb-1 flex items-center gap-2 font-semibold">
+        <Cloud className="size-4 text-muted" /> Conta e sincronização
+      </h2>
+      <p className="text-sm text-muted">
+        Conectada como <strong className="text-fg">{email ?? "—"}</strong>
+      </p>
+      <p className="mb-4 text-sm text-muted">
+        {pending > 0 ? "Salvando alterações…" : synced ? `Sincronizado em ${synced}. Alterações aparecem nos outros aparelhos automaticamente.` : "Sincronizando…"}
+      </p>
+      <button
+        type="button"
+        onClick={() => confirm("Sair desta conta neste aparelho?") && signOut()}
+        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-surface-2"
+      >
+        <LogOut className="size-4" /> Sair
+      </button>
+    </Card>
   );
 }
