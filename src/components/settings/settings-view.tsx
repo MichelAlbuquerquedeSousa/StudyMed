@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
-import { Cloud, FileUp, LogOut, RotateCcw, Smartphone, Sparkles } from "lucide-react";
+import { Cloud, LogOut, RotateCcw, Smartphone, Sparkles } from "lucide-react";
 import { InstallCard } from "../pwa/pwa";
 import { contrastRatio, DEFAULT_CATEGORIES, INK } from "@/lib/categories";
 import { TIME_ZONE } from "@/lib/time";
@@ -71,12 +70,6 @@ export function SettingsView() {
         <p className="text-sm text-muted">
           Todas as datas e horários usam <strong className="text-fg">{TIME_ZONE}</strong> (UTC−3), mesmo se o aparelho estiver em outro fuso.
         </p>
-      </Card>
-
-      <Card className="md:hidden">
-        <Link href="/importar" className="flex items-center gap-3 font-medium">
-          <FileUp className="size-5 text-muted" /> Importar planejamento
-        </Link>
       </Card>
 
       <Card>

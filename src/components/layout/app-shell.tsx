@@ -32,7 +32,7 @@ const NAV = [
   { href: "/calendario", label: "Agenda", Icon: CalendarDays, mobile: true },
   { href: "/tarefas", label: "Tarefas", Icon: ListChecks, mobile: true },
   { href: "/provas", label: "Provas", Icon: GraduationCap, mobile: true },
-  { href: "/importar", label: "Importar", Icon: FileUp, mobile: false },
+  { href: "/importar", label: "Importar", Icon: FileUp, mobile: true },
   { href: "/ajustes", label: "Ajustes", Icon: Settings, mobile: true },
 ];
 
@@ -220,7 +220,7 @@ function SideNav({ pathname }: { pathname: string | null }) {
 
 function BottomNav({ pathname }: { pathname: string | null }) {
   return (
-    <ul className="mx-auto flex max-w-md justify-around px-2">
+    <ul className="mx-auto flex max-w-lg justify-around px-1">
       {NAV.filter((n) => n.mobile).map(({ href, label, Icon }) => {
         const active = isActive(pathname, href);
         return (
@@ -235,7 +235,7 @@ function BottomNav({ pathname }: { pathname: string | null }) {
             >
               <span
                 className={clsx(
-                  "grid h-7 w-12 place-items-center rounded-full transition-colors",
+                  "grid h-7 w-11 place-items-center rounded-full transition-colors",
                   active && "bg-accent-soft/60 dark:bg-accent-soft",
                 )}
               >
