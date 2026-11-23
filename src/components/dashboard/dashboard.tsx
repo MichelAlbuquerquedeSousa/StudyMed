@@ -66,7 +66,7 @@ export function Dashboard() {
 
       <div className="grid gap-5 lg:grid-cols-12">
         {/* Coluna principal */}
-        <div className="space-y-5 lg:col-span-7">
+        <div className="min-w-0 space-y-5 lg:col-span-7">
           {focus && <FocusCard entry={focus.entry} state={focus.state} />}
 
           <Card>
@@ -84,7 +84,7 @@ export function Dashboard() {
         </div>
 
         {/* Coluna lateral */}
-        <div className="space-y-5 lg:col-span-5">
+        <div className="min-w-0 space-y-5 lg:col-span-5">
           <Card>
             <CardHeader title="Tarefas pendentes" icon={<ListChecks className="size-4 text-muted" />} href="/tarefas" />
             {todayTasks.length > 0 && (

@@ -66,7 +66,7 @@ export function TasksView() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           {undated.length > 0 && (
-            <section>
+            <section className="min-w-0">
               <h2 className="mb-2 text-sm font-semibold text-muted">
                 Sem data <span className="font-normal tabular-nums opacity-70">· {undated.length}</span>
               </h2>
@@ -78,7 +78,7 @@ export function TasksView() {
             </section>
           )}
           {groups.map(({ label, entries, alert }) => (
-            <section key={label}>
+            <section key={label} className="min-w-0">
               <h2 className={`mb-2 text-sm font-semibold ${alert ? "text-accent" : "text-muted"}`}>
                 {label} <span className="font-normal tabular-nums opacity-70">· {entries.length}</span>
               </h2>

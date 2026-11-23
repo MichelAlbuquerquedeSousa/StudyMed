@@ -73,7 +73,7 @@ function Importer({ today }: { today: ISODate }) {
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ batchId: string; items: number; exams: number } | null>(null);
   const [batchesVersion, setBatchesVersion] = useState(0);
-  const [filter, setFilterState] = useState<PreviewFilter>({ status: "selecionados", subject: "" });
+  const [filter, setFilterState] = useState<PreviewFilter>({ status: "selecionados", subject: "", kind: "" });
   // Cartões alterados agora continuam visíveis até trocar o filtro (não "somem" ao desmarcar).
   const [pinned, setPinned] = useState<Set<string>>(new Set());
   const setFilter = (f: PreviewFilter) => {
@@ -95,9 +95,15 @@ function Importer({ today }: { today: ISODate }) {
     if (parsed.candidates.length === 0) {
       return setError("Não encontrei datas, dias da semana ou horários neste material. Confira o texto ou ajuste o formato (ex.: “Segunda 07:30-09:10 Anatomia”).");
     }
-    setEdited(parsed.candidates);
+    // O que provavelmente já está na agenda (mesmo título, ou aula/prova no mesmo horário) vem desmarcado.
+    const dupIds = new Set(
+      review(parsed.candidates, { items, overrides, exams }, period)
+        .filter((c) => c.flags.some((f) => f.code === "duplicata" && /já existe/.test(f.message)))
+        .map((c) => c.id),
+    );
+    setEdited(parsed.candidates.map((c) => (dupIds.has(c.id) ? { ...c, include: false } : c)));
     setUnrecognized(parsed.unrecognized);
-    setFilter({ status: "selecionados", subject: "" });
+    setFilter({ status: "selecionados", subject: "", kind: "" });
     setStep("previa");
     window.scrollTo({ top: 0 });
   };
@@ -733,7 +739,7 @@ function RecentImports({ version }: { version: number }) {
   );
 }
 
-type PreviewFilter = { status: "selecionados" | "desmarcados" | "avisos" | "todos"; subject: string };
+type PreviewFilter = { status: "selecionados" | "desmarcados" | "avisos" | "todos"; subject: string; kind: "" | CandidateKind };
 
 /** Disciplina de um candidato (para filtrar): "Obstetrícia — Aula 1…" → "Obstetrícia". */
 function subjectOf(c: ImportCandidate): string {
@@ -748,7 +754,8 @@ function applyFilter(list: ImportCandidate[], f: PreviewFilter, pinned: Set<stri
         (f.status === "selecionados" && c.include) ||
         (f.status === "desmarcados" && !c.include) ||
         (f.status === "avisos" && (c.flags.length > 0 || blockingErrors(c).length > 0))) &&
-      (!f.subject || subjectOf(c) === f.subject),
+      (!f.subject || subjectOf(c) === f.subject) &&
+      (!f.kind || c.kind === f.kind),
   );
 }
 
@@ -785,6 +792,17 @@ function PreviewFilters({
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={filter.kind}
+          onChange={(e) => onFilter({ ...filter, kind: e.target.value as PreviewFilter["kind"] })}
+          aria-label="Filtrar por tipo"
+          className={clsx(fieldClass, "w-full sm:w-auto")}
+        >
+          <option value="">Todos os tipos</option>
+          <option value="evento">Eventos (aulas, práticas…)</option>
+          <option value="tarefa">Tarefas (estudo…)</option>
+          <option value="prova">Provas</option>
+        </select>
         <select
           value={filter.subject}
           onChange={(e) => onFilter({ ...filter, subject: e.target.value })}

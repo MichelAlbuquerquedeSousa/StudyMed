@@ -8,7 +8,7 @@
  * - texto da célula: tudo o que está dentro do retângulo.
  * O ano é deduzido pelo dia da semana (03/08 numa segunda ⇒ 2026); se não bater, fica sinalizado.
  */
-import { parseISODate, timeToMinutes, type HHMM, type ISODate } from "../time";
+import { timeToMinutes, type HHMM, type ISODate } from "../time";
 import type { CategoryKey } from "../types";
 import { itemsToLines, type PositionedText } from "./line-assembly";
 import { findTime, flag } from "./parser";
@@ -62,19 +62,8 @@ function luminance(hex: string) {
   return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
 }
 
-/** Ano em que dd/mm cai no dia da semana do cabeçalho (o mais próximo de hoje). */
-export function inferYear(day: number, month: number, weekday: number, today: ISODate): { date: ISODate | null; inferred: boolean } {
-  const ref = Number(today.slice(0, 4));
-  const candidates = [ref, ref + 1, ref - 1]
-    .map((y) => `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`)
-    .filter((iso) => {
-      const d = parseISODate(iso);
-      return d.getUTCDate() === day && d.getUTCDay() === weekday;
-    });
-  if (candidates.length) return { date: candidates[0], inferred: true };
-  const iso = `${ref}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  return { date: parseISODate(iso).getUTCDate() === day ? iso : null, inferred: false };
-}
+export { inferYear } from "../time";
+import { inferYear } from "../time";
 
 /** Encontra a grade semanal na página (ou null se a página não for uma grade). */
 export function detectGrid(items: PositionedText[], rects: FilledRect[], today: ISODate): WeekGrid | null {

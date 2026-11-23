@@ -37,6 +37,22 @@ Tela **Importar** (barra inferior no celular). Fluxo: **material → prévia edi
 - Cada importação gera um **lote** (`import_batches`, com o texto original). Os itens ficam ligados ao
   lote e podem ser **desfeitos** de uma vez — logo após importar ou em "Importações recentes".
 
+## Planos de estudo (ex.: plano da tutoria)
+
+Listas por dia, como "• SEGUNDA (23/11)" seguido de "o 10-12h – AIM 2 Ped":
+
+- Horários só com a hora: `10-12h`, `14-17h`, `17h` (não confundidos com datas como 10/12).
+- Marcadores de lista vindos do Word/PDF (`•`, `o`, `▪`) são removidos.
+- **Blocos de estudo**: uma linha só com o horário (`19-22h`) seguida de itens "Revisar …"/"Estudar …"
+  vira uma tarefa de estudo por item, todas com o horário do bloco.
+- Linhas que começam com verbo de estudo (Revisar, Estudar, Ler, Resolver…) são **tarefas de estudo**,
+  mesmo que contenham palavras como "exame" ("Revisar … Exame Mental").
+- "AIM HAP", "AIM 2 Ped" → provas (avaliação "AIM 2", disciplina "Ped").
+- O dia da semana do cabeçalho confirma o ano da data.
+- **Aulas e provas no mesmo horário de aulas/provas que já estão na agenda** (ex.: importadas do
+  cronograma oficial) são tratadas como possíveis duplicatas e **vêm desmarcadas**; as tarefas de estudo
+  continuam marcadas. Na prévia há filtro por tipo (eventos, tarefas, provas).
+
 ## Grade semanal em PDF
 
 Detectada automaticamente quando a página tem os cabeçalhos SEGUNDA…SEXTA com datas (dd/mm) e

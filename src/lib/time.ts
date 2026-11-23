@@ -108,6 +108,20 @@ export function minutesToTime(min: number): HHMM {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** Ano em que dd/mm cai no dia da semana do cabeçalho (o mais próximo de hoje). */
+export function inferYear(day: number, month: number, weekday: number, today: ISODate): { date: ISODate | null; inferred: boolean } {
+  const ref = Number(today.slice(0, 4));
+  const candidates = [ref, ref + 1, ref - 1]
+    .map((y) => `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`)
+    .filter((iso) => {
+      const d = parseISODate(iso);
+      return d.getUTCDate() === day && d.getUTCDay() === weekday;
+    });
+  if (candidates.length) return { date: candidates[0], inferred: true };
+  const iso = `${ref}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return { date: parseISODate(iso).getUTCDate() === day ? iso : null, inferred: false };
+}
+
 // ---------- Formatação em português (datas tratadas em UTC para não deslocar o dia) ----------
 
 function fmt(d: ISODate, opts: Intl.DateTimeFormatOptions): string {

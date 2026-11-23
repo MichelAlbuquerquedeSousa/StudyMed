@@ -137,7 +137,7 @@ function Calendar({ today, nowMinutes }: { today: ISODate; nowMinutes: number })
       {view === "mes" ? (
         <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
           <MonthView cursor={cursor} today={today} entries={entries} selected={cursor} onSelectDay={setCursor} />
-          <section className="rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-soft">
+          <section className="min-w-0 rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-soft">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-semibold">{capitalize(formatLongDate(cursor))}</h2>
               <IconBtn label="Adicionar neste dia" onClick={() => openQuickAdd(cursor)}>

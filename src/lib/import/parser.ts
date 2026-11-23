@@ -7,7 +7,7 @@
  *   (ex.: ano não escrito, categoria deduzida por palavra-chave), o item recebe um aviso.
  * - Linhas com data/horário que não puderam ser interpretadas vão para "não reconhecidas".
  */
-import { minutesToTime, parseISODate, type HHMM, type ISODate } from "../time";
+import { inferYear, minutesToTime, parseISODate, type HHMM, type ISODate } from "../time";
 import type { CategoryKey } from "../types";
 import type { CandidateKind, Flag, FlagCode, ImportCandidate, ParseResult, UnrecognizedLine } from "./types";
 
@@ -109,7 +109,7 @@ export function findDates(line: string, today: ISODate): FoundDate[] {
   const year = Number(today.slice(0, 4));
   const out: FoundDate[] = [];
   // 12/03, 12/03/2026, 12-03-26, 12.03
-  for (const m of s.matchAll(/(?<![\d:h])(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{4}|\d{2}))?(?![\d:])/g)) {
+  for (const m of s.matchAll(/(?<![\d:h])(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{4}|\d{2}))?(?![\d:]|\s*h)/g)) {
     const d = Number(m[1]);
     const mo = Number(m[2]);
     if (mo > 12 || d > 31 || mo === 0 || d === 0) continue; // não é data (ex.: 1.5)
@@ -151,6 +151,13 @@ export function findTime(line: string): FoundTime | null {
     const end = toTime(m[4], m[5], m[6]);
     if (start && end) return { start, end, span: [m.index!, m.index! + m[0].length] };
   }
+  // "10-12h", "8 às 10h": início só com a hora, fim com "h" ou ":"
+  const hourRange = new RegExp(`(?<![\\d/:])(?:das\\s+|de\\s+)?(\\d{1,2})\\s*(?:-|–|—|a|as|ate)\\s*${TIME}`, "g");
+  for (const m of s.matchAll(hourRange)) {
+    const start = toTime(m[1]);
+    const end = toTime(m[2], m[3], m[4]);
+    if (start && end && start < end) return { start, end, span: [m.index!, m.index! + m[0].length] };
+  }
   const single = new RegExp(`(?:as\\s+|a\\s+partir\\s+das\\s+)?${TIME}`, "g");
   for (const m of s.matchAll(single)) {
     // "1.5h" ou números soltos não contam; exige ":" ou "h".
@@ -162,14 +169,16 @@ export function findTime(line: string): FoundTime | null {
 
 // ---------------- Classificação ----------------
 
-const EXAM_RE = /\b(prova|avaliacao|exame|teste|simulado|osce|n1|n2|n3|ap1|ap2|av1|av2|aim\s*\d|naf|segunda chamada|recuperacao)\b/;
+const EXAM_RE = /\b(prova|avaliacao|exame|teste|simulado|osce|n1|n2|n3|ap1|ap2|av1|av2|aim(?:\s*\d+)?|naf|segunda chamada|recuperacao)\b/;
+/** Tarefa de estudo: começa com um verbo de estudo ("Revisar X", "Estudar Y"). Vale mais que palavras como "exame". */
+const STUDY_RE = /^(estudar|revisar|rever|ler|resolver|fazer|refazer|assistir|resumir|praticar|treinar|memorizar)\b/i;
 const TASK_RE = /\b(entrega|entregar|enviar|envio|ler|leitura|estudar|revisar|revisao|resumo|resumir|lista de exercicios|questoes|preparar|pagar|comprar)\b/;
 const CATEGORY_RULES: [RegExp, CategoryKey][] = [
   [/\b(tutoria|tutorial|tutora?|apg|pbl|sessao tutorial|abertura|fechamento)\b/, "tutoria"],
   [/\b(pratica|praticas|laboratorio|lab|habilidades|simulacao|ambulatorio|estagio|plantao|campo|microscopia|dissecacao|oficina|extensao|ubs)\b/, "pratica"],
   [/\b(estudo|estudar|revisao|revisar|resumo|questoes|leitura|ler|flashcards?)\b/, "estudo"],
   [/\b(aula|teorica|conferencia|palestra|seminario)\b/, "aula"],
-  [/\b(pagar|comprar|academia|consulta|pessoal|medico|dentista)\b/, "pessoal"],
+  [/\b(pagar|comprar|academia|consulta|pessoal|medico|dentista|lazer|dormir|descanso|descansar)\b/, "pessoal"],
 ];
 
 export function guessCategory(text: string, kind: CandidateKind): { category: CategoryKey; presumed: boolean } {
@@ -219,7 +228,8 @@ function cleanTitle(text: string): string {
 function examSubject(title: string): string {
   return collapse(
     title
-      .replace(/\b(prova|avalia[cç][aã]o|exame|teste|simulado|osce|n[123]|ap[12]|av[12]|te[oó]rica|pr[aá]tica|final|parcial|segunda chamada|recupera[cç][aã]o)\b/gi, " ")
+      .replace(/\b(prova|avalia[cç][aã]o|exame|teste|simulado|osce|n[123]|ap[12]|av[12]|aim(?:\s*\d+)?|naf|te[oó]rica|pr[aá]tica|final|parcial|segunda chamada|recupera[cç][aã]o)\b/gi, " ")
+      .replace(/^\s*[–—-]\s*/, "")
       .replace(/^\s*(?:de|da|do|-|–|:)\s*/i, "")
       .replace(/\s*[-–:]\s*$/, ""),
   ).replace(/^(?:de|da|do)\s+/i, "");
@@ -248,15 +258,19 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
   let ctxDate: { date: ISODate | null; yearPresumed: boolean } | null = null;
   let topicTarget: ImportCandidate | null = null;
   let lastExam: ImportCandidate | null = null;
+  /** Bloco de horário ("19-22h" sozinho na linha): as tarefas de estudo abaixo dele herdam o horário. */
+  let block: { start: HHMM; end?: HHMM; id: string } | null = null;
 
   lines.forEach((raw, idx) => {
     const lineNo = idx + 1;
-    const line = collapse(raw.normalize("NFC"));
+    // Marcadores de lista vindos de PDF/Word ("•", "o", "▪") não fazem parte do texto.
+    const line = collapse(raw.normalize("NFC")).replace(/^(?:[•◦▪●○·]\s*\|?|o\s*\|)\s*/, "");
     if (!line) {
       // Linha em branco encerra o bloco: a data/dia de contexto não vale para o próximo bloco.
       ctxDate = null;
       ctxWeekdays = [];
       topicTarget = null;
+      block = null;
       return;
     }
     const plain = strip(line);
@@ -293,8 +307,13 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
     const leftover = cleanTitle(removeSpans(line, [...wd.spans, ...dates.map((d) => d.span)]));
     if (!time && leftover.replace(/[()]/g, "").trim() === "") {
       if (dates.length === 1) {
-        ctxDate = { date: dates[0].date, yearPresumed: dates[0].yearPresumed };
+        // "SEGUNDA (23/11)": o dia da semana confirma o ano.
+        const d = dates[0];
+        const [, mm, dd] = (d.date ?? "").split("-").map(Number);
+        const byWeekday = d.yearPresumed && d.date && wd.days.length === 1 ? inferYear(dd, mm, wd.days[0], today) : null;
+        ctxDate = byWeekday?.inferred ? { date: byWeekday.date, yearPresumed: false } : { date: d.date, yearPresumed: d.yearPresumed };
         ctxWeekdays = [];
+        block = null;
         return;
       }
       if (wd.days.length > 0 && dates.length === 0) {
@@ -310,10 +329,25 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
       ctxDate = null;
       ctxWeekdays = [];
     }
-    const isExam = EXAM_RE.test(plain);
-    const isTask = !isExam && TASK_RE.test(plain) && !(time && time.end);
+    // Horário sozinho na linha ("19-22h"): abre um bloco para as tarefas de estudo seguintes.
+    const timeOnly = time && dates.length === 0 && wd.days.length === 0 && !cleanTitle(removeSpans(line, [time.span])).replace(/[–—-]/g, "").trim();
+    if (timeOnly) {
+      block = { start: time.start, end: time.end, id: makeId() };
+      return;
+    }
+    const probeTitle = cleanTitle(removeSpans(line, [...wd.spans, ...dates.map((d) => d.span), ...(time ? [time.span] : [])]));
+    const isStudy = STUDY_RE.test(probeTitle);
+    let effTime = time;
+    let group: string | undefined;
+    if (time || dates.length || wd.days.length) block = null;
+    else if (block && isStudy) {
+      effTime = { start: block.start, end: block.end, span: [0, 0] };
+      group = block.id;
+    }
+    const isExam = !isStudy && EXAM_RE.test(plain);
+    const isTask = isStudy || (!isExam && TASK_RE.test(plain) && !(time && time.end));
     // Sem nenhum sinal de agenda: não é um item (texto corrido, títulos de seção…)
-    if (!time && dates.length === 0 && wd.days.length === 0 && !(isExam && (ctxDate || ctxWeekdays.length || undefinedDate))) {
+    if (!effTime && dates.length === 0 && wd.days.length === 0 && !(isExam && (ctxDate || ctxWeekdays.length || undefinedDate))) {
       if (/\d/.test(line) && (isExam || isTask)) unrecognized.push({ line: lineNo, text: line });
       return;
     }
@@ -329,7 +363,12 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
       if (dates.length > 1) flags.push(flag("varias-datas", "aviso", "usada a primeira"));
       if (!first.date) flags.push(flag("data-invalida", "erro", line.slice(first.span[0], first.span[1])));
       else date = first.date;
-      if (first.yearPresumed) flags.push(flag("ano-presumido", "aviso", `considerado ${today.slice(0, 4)}`));
+      if (first.yearPresumed && first.date && wd.days.length === 1) {
+        const [, mm, dd] = first.date.split("-").map(Number);
+        const r = inferYear(dd, mm, wd.days[0], today);
+        if (r.inferred && r.date) date = r.date;
+        else flags.push(flag("ano-presumido", "aviso", `considerado ${today.slice(0, 4)}`));
+      } else if (first.yearPresumed) flags.push(flag("ano-presumido", "aviso", `considerado ${today.slice(0, 4)}`));
     } else if (wd.days.length > 0) {
       weekdays = wd.days;
     } else if (ctxDate) {
@@ -350,7 +389,11 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
     if (time) spans.push(time.span);
     const { location, rest } = extractLocation(removeSpans(line, spans));
     let title = cleanTitle(rest);
+    let examTitle: string | undefined;
     if (kind === "prova") {
+      // Nome da avaliação quando é uma sigla conhecida ("AIM 2", "NAF", "OSCE", "N1")
+      const named = title.match(/\b(segunda chamada\s+)?(aim(?:\s*\d+)?|naf|osce|n[123]|av[12]|ap[12])\b/i);
+      if (named) examTitle = named[0].toUpperCase().replace(/^SEGUNDA CHAMADA/, "Segunda chamada");
       const subject = examSubject(title);
       if (!subject) flags.push(flag("titulo-incerto", "erro", "informe a disciplina"));
       title = subject || "";
@@ -359,10 +402,10 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
       title = "";
     }
 
-    if (kind !== "tarefa" && kind !== "prova" && !time) flags.push(flag("sem-horario"));
-    if (kind === "evento" && time && !time.end) flags.push(flag("sem-termino"));
+    if (kind !== "tarefa" && kind !== "prova" && !effTime) flags.push(flag("sem-horario"));
+    if (kind === "evento" && effTime && !effTime.end) flags.push(flag("sem-termino"));
 
-    const { category, presumed } = guessCategory(line, kind);
+    const { category, presumed } = isStudy ? { category: "estudo" as CategoryKey, presumed: false } : guessCategory(line, kind);
     if (presumed) flags.push(flag("categoria-presumida"));
 
     // Horário sem título reconhecível e sem agenda: provavelmente lixo de tabela
@@ -379,9 +422,11 @@ export function parsePlanning(text: string, today: ISODate, makeId: () => string
       category,
       weekdays,
       date,
-      startTime: time?.start,
-      endTime: time?.end,
+      startTime: effTime?.start,
+      endTime: effTime?.end,
       location,
+      group,
+      examTitle,
       topics: [],
       sourceLines: [lineNo],
       sourceText: line,

@@ -107,14 +107,17 @@ export function review(
   }
 
   // Conflitos: agenda atual + candidatos incluídos
-  const included = base.filter((c) => c.include && blockingErrors(c).length === 0);
-  const candEntries = included.flatMap((c) => candidateEntries(c, period).map((e) => ({ e, c })));
+  // Todos os itens válidos entram na checagem (duplicata vale mesmo desmarcado);
+  // conflitos só são apontados entre itens marcados.
+  const valid = base.filter((c) => blockingErrors(c).length === 0);
+  const candEntries = valid.flatMap((c) => candidateEntries(c, period).map((e) => ({ e, c })));
   if (candEntries.length) {
     const dates = candEntries.map(({ e }) => e.date).sort();
     const current = expandEntries(existing.items, existing.overrides, existing.exams, dates[0], dates[dates.length - 1]).filter((e) => e.startTime);
     const all = [...current, ...candEntries.map(({ e }) => e)];
     const byKey = new Map(candEntries.map(({ e, c }) => [e.key, c]));
     const reported = new Map<string, Set<string>>();
+    const sameSlot = new Map<string, string>();
     for (const [a, b] of findConflicts(all)) {
       for (const [mine, other] of [
         [a, b],
@@ -128,6 +131,13 @@ export function review(
         if (otherCand && c.group && otherCand.group === c.group) continue;
         // A própria cópia já existente é duplicata (sinalizada acima), não conflito.
         if (!otherCand && normalizeTitle(other.title.replace(/^Prova · /, "")) === normalizeTitle(c.title) && other.startTime === mine.startTime) continue;
+        // Aula/prova no MESMO horário de outra aula/prova já na agenda: provavelmente a mesma atividade
+        // com outro nome (ex.: "Aula Ped" × "Pediatria — Aula 20"; "AIM 2 Ped" × "AIM 2 — Pediatria").
+        if (!otherCand && mine.kind !== "tarefa" && other.kind !== "tarefa" && mine.startTime === other.startTime) {
+          if (!sameSlot.has(c.id)) sameSlot.set(c.id, describe(other));
+          continue;
+        }
+        if (!c.include || (otherCand && !otherCand.include)) continue;
         const label = otherCand ? `${describe(other)} — também neste material` : describe(other);
         const set = reported.get(c.id) ?? new Set<string>();
         if (set.has(label)) continue;
@@ -136,6 +146,8 @@ export function review(
       }
     }
     for (const c of base) {
+      const same = sameSlot.get(c.id);
+      if (same && !c.flags.some((f) => f.code === "duplicata")) c.flags.push(flag("duplicata", "aviso", `já existe na sua agenda neste horário: ${same}`));
       const set = reported.get(c.id);
       if (set) c.flags.push(flag("conflito", "aviso", [...set].slice(0, 2).join("; ") + (set.size > 2 ? ` e mais ${set.size - 2}` : "")));
     }

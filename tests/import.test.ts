@@ -89,7 +89,8 @@ describe("roteiro com datas, provas e conteúdos", () => {
 
   it("usa a data de contexto para as linhas seguintes", () => {
     expect(candidates[0]).toMatchObject({ kind: "evento", title: "Tutoria — abertura do problema 3", date: "2026-12-02", startTime: "14:00", endTime: "17:00", category: "tutoria" });
-    expect(codes(candidates[0])).toContain("ano-presumido");
+    // "02/12 (quarta)": o dia da semana confirma 2026, então não há aviso de ano presumido.
+    expect(codes(candidates[0])).not.toContain("ano-presumido");
   });
 
   it("reconhece tarefa com prazo", () => {
@@ -254,5 +255,85 @@ describe("montagem de linhas do PDF", () => {
       { str: "Lab. Multidisciplinar", x: 310, y: 739, width: 105, size: 12 },
     ];
     expect(itemsToLines(row)).toEqual(["Quinta | 13h30 às 15h30 | Prática de Microscopia | Lab. Multidisciplinar"]);
+  });
+});
+
+describe("plano de estudos (formato tutoria)", () => {
+  const plano = [
+    "TUTORIA — PLANO DA SEMANA",
+    "-Revisar = reler resumo + questões antigas;",
+    "• | SEGUNDA (23/11)",
+    "o | 10-12h – AIM 2 Ped",
+    "o | 14-17h – Prática Ped",
+    "o | 19-22h",
+    "o | Revisar Entrevista Psiquiátrica, Exame Mental e Súmula",
+    "o | Revisar Afetividade",
+    "• | SEXTA (27/11)",
+    "o | 10-12h – AIM HAP",
+    "o | 17h – Extensão",
+    "o | 18-19h – revisar CBL Nefrologia – ITU",
+    "",
+    "• | SÁBADO (28/11)",
+    "o | 09-12h",
+    "o | Estudar Abdome agudo inflamatório",
+    "o | LAZER",
+  ].join("\n");
+  const { candidates, unrecognized } = parse(plano);
+  const by = (t: string) => candidates.find((c) => c.title === t);
+
+  it("'10-12h' é horário (não a data 10/12) e o dia vem do cabeçalho, com ano confirmado pelo dia da semana", () => {
+    expect(by("Ped")).toMatchObject({ kind: "prova", examTitle: "AIM 2", date: "2026-11-23", startTime: "10:00", endTime: "12:00" });
+    expect(codes(by("Ped")!)).not.toContain("ano-presumido");
+    expect(by("Prática Ped")).toMatchObject({ kind: "evento", startTime: "14:00", endTime: "17:00", category: "pratica" });
+  });
+
+  it("remove marcadores de lista do PDF/Word", () => {
+    expect(candidates.every((c) => !/^(o|•)\b/.test(c.title))).toBe(true);
+  });
+
+  it("bloco '19-22h' passa o horário para as tarefas de estudo abaixo dele, sem conflito entre elas", () => {
+    const rev = candidates.filter((c) => c.date === "2026-11-23" && c.kind === "tarefa");
+    expect(rev.map((c) => [c.title, c.startTime, c.endTime, c.category])).toEqual([
+      ["Revisar Entrevista Psiquiátrica, Exame Mental e Súmula", "19:00", "22:00", "estudo"],
+      ["Revisar Afetividade", "19:00", "22:00", "estudo"],
+    ]);
+    expect(rev[0].group).toBe(rev[1].group);
+  });
+
+  it("'Revisar … Exame Mental' é tarefa de estudo, não prova; 'AIM HAP' é prova", () => {
+    expect(candidates.filter((c) => c.kind === "prova").map((c) => `${c.examTitle} ${c.title}`)).toEqual(["AIM 2 Ped", "AIM HAP"]);
+    expect(by("revisar CBL Nefrologia – ITU")).toMatchObject({ kind: "tarefa", startTime: "18:00", endTime: "19:00" });
+  });
+
+  it("linha sem horário fora de bloco (LAZER) não vira item; nada fica sem data", () => {
+    expect(candidates.some((c) => /lazer/i.test(c.title))).toBe(false);
+    expect(candidates.every((c) => c.date)).toBe(true);
+    expect(by("Estudar Abdome agudo inflamatório")).toMatchObject({ date: "2026-11-28", startTime: "09:00", endTime: "12:00" });
+    expect(unrecognized).toEqual([]);
+  });
+
+  it("aula/prova no mesmo horário de uma aula/prova da agenda é sinalizada como duplicata", () => {
+    const existing = {
+      items: [{ id: "p", kind: "evento" as const, title: "Pediatria — Prática 5", category: "pratica" as const, date: "2026-11-23", startTime: "14:00", endTime: "18:00", source: "importado" as const }],
+      overrides: [],
+      exams: [{ id: "e", subject: "Pediatria / Neonatologia", title: "AIM 2 — Pediatria / Neonatologia", date: "2026-11-23", startTime: "10:00", topics: [], source: "importado" as const }],
+    };
+    const r = review(candidates, existing, { startsOn: "2026-11-23" });
+    const msg = (t: string) => r.find((c) => c.title === t)!.flags.find((f) => f.code === "duplicata")?.message ?? "";
+    expect(msg("Ped")).toMatch(/já existe na sua agenda neste horário: Prova de Pediatria/);
+    expect(msg("Prática Ped")).toMatch(/Pediatria — Prática 5/);
+    // Tarefa de estudo no mesmo horário NÃO é duplicata
+    expect(msg("Revisar Afetividade")).toBe("");
+  });
+
+  it("o aviso de duplicata continua depois de desmarcar o item (para explicar por que veio desmarcado)", () => {
+    const existing = {
+      items: [],
+      overrides: [],
+      exams: [{ id: "e", subject: "Pediatria", title: "AIM 2 — Pediatria", date: "2026-11-23", startTime: "10:00", topics: [], source: "importado" as const }],
+    };
+    const off = candidates.map((c) => (c.title === "Ped" ? { ...c, include: false } : c));
+    const r = review(off, existing, { startsOn: "2026-11-23" });
+    expect(r.find((c) => c.title === "Ped")!.flags.some((f) => f.code === "duplicata")).toBe(true);
   });
 });
