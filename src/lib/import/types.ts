@@ -13,7 +13,11 @@ export type FlagCode =
   | "data-invalida"
   | "varias-datas"
   | "duplicata"
-  | "conflito";
+  | "conflito"
+  | "alternativa"
+  | "sem-aula"
+  | "passado"
+  | "segunda-chamada";
 
 export interface Flag {
   code: FlagCode;
@@ -35,6 +39,12 @@ export interface ImportCandidate {
   startTime?: HHMM;
   endTime?: HHMM;
   location?: string;
+  /** Observações (tema completo, professores…). */
+  notes?: string;
+  /** Provas: nome da avaliação ("AIM 2", "OSCE"); o título vira "AIM 2 — Disciplina". */
+  examTitle?: string;
+  /** Opções alternativas da mesma célula ("A ou B") compartilham o grupo. */
+  group?: string;
   /** Só para provas. */
   topics: string[];
   /** Linhas do material de onde o item veio (1 = primeira linha). */
@@ -56,8 +66,12 @@ export interface ParseResult {
 /** Texto extraído de um material (colado, PDF; no futuro, imagem via OCR/IA). */
 export interface ExtractedDocument {
   text: string;
+  /** Itens já estruturados (ex.: grade semanal lida pela geometria do PDF). Usados se o texto não for editado. */
+  structured?: ImportCandidate[];
   source: "texto" | "pdf" | "imagem";
   fileName?: string;
   pages?: number;
   warnings: string[];
+  /** Mensagem informativa (ex.: grade semanal reconhecida). */
+  info?: string;
 }

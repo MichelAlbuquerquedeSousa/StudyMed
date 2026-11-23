@@ -3,7 +3,10 @@
  * v1: texto colado e PDF com texto selecionável (processados no navegador; nada é enviado a terceiros).
  * Futuro: OCR (imagens/PDF digitalizado) e IA — já previstos aqui, desativados.
  */
-import type { ExtractedDocument } from "./types";
+import { cellToCandidates, detectGrid, detectLegend, gridCells, renderCandidates, type FilledRect } from "./grid";
+import { filledRects, type OpCodes } from "./pdf-geometry";
+import type { ExtractedDocument, ImportCandidate } from "./types";
+import { todayInTZ } from "../time";
 
 export interface Extractor {
   id: "texto" | "pdf" | "ocr" | "ia";
@@ -15,52 +18,12 @@ export interface Extractor {
 
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
-// ---------------- Montagem de linhas a partir das posições do texto no PDF ----------------
-
-export interface PositionedText {
-  str: string;
-  x: number;
-  y: number;
-  width: number;
-  /** Tamanho da fonte (quando conhecido): referência para separar palavras de colunas. */
-  size?: number;
-}
-
-/**
- * Agrupa pedaços de texto pela altura (y) e os ordena da esquerda para a direita.
- * Espaços grandes entre pedaços (colunas de tabela) viram " | ", que o leitor entende como separador.
- */
-export function itemsToLines(items: PositionedText[], tolerance = 3): string[] {
-  const rows: { y: number; parts: PositionedText[] }[] = [];
-  for (const it of items) {
-    if (!it.str.trim()) continue;
-    const row = rows.find((r) => Math.abs(r.y - it.y) <= tolerance);
-    if (row) row.parts.push(it);
-    else rows.push({ y: it.y, parts: [it] });
-  }
-  rows.sort((a, b) => b.y - a.y);
-  return rows.map(({ parts }) => {
-    parts.sort((a, b) => a.x - b.x);
-    let line = "";
-    let prevEnd: number | null = null;
-    for (const p of parts) {
-      const charW = p.width / Math.max(p.str.length, 1);
-      if (prevEnd !== null) {
-        const gap = p.x - prevEnd;
-        // Espaço entre palavras ≈ 0,25 × fonte; colunas de tabela ficam bem mais afastadas.
-        const columnGap = p.size ? p.size * 0.6 : Math.max(6, charW * 1.6);
-        line += gap > columnGap ? " | " : gap > charW * 0.25 && !line.endsWith(" ") && !p.str.startsWith(" ") ? " " : "";
-      }
-      line += p.str;
-      prevEnd = p.x + p.width;
-    }
-    return line.replace(/\s+/g, " ").trim();
-  });
-}
+export { itemsToLines, type PositionedText } from "./line-assembly";
+import { itemsToLines, type PositionedText } from "./line-assembly";
 
 // ---------------- PDF ----------------
 
-async function extractPdf(file: File): Promise<ExtractedDocument> {
+async function extractPdf(file: File, today: string = todayInTZ()): Promise<ExtractedDocument> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
   const data = new Uint8Array(await file.arrayBuffer());
@@ -74,13 +37,47 @@ async function extractPdf(file: File): Promise<ExtractedDocument> {
     throw new Error("Não foi possível ler este PDF. Ele pode estar corrompido.");
   }
   const pages: string[] = [];
+  const pageData: { items: PositionedText[]; rects: FilledRect[] }[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
     const content = await page.getTextContent();
     const items = content.items
       .filter((it): it is Extract<(typeof content.items)[number], { str: string }> => "str" in it)
       .map((it) => ({ str: it.str, x: it.transform[4], y: it.transform[5], width: it.width, size: Math.hypot(it.transform[0], it.transform[1]) || undefined }));
+    const ops = await page.getOperatorList();
+    pageData.push({ items, rects: filledRects(ops.fnArray, ops.argsArray as unknown[][], pdfjs.OPS as unknown as OpCodes) });
     pages.push(itemsToLines(items).join("\n"));
+  }
+
+  // Grade semanal (dias nas colunas, horários nas linhas): lida pela geometria da página.
+  let legend = new Map<string, string>();
+  for (const pd of pageData) {
+    const l = detectLegend(pd.items, pd.rects);
+    if (l.size > legend.size) legend = l;
+  }
+  const structured: ImportCandidate[] = [];
+  const rendered: string[] = [];
+  let gridPages = 0;
+  pageData.forEach((pd, idx) => {
+    const grid = detectGrid(pd.items, pd.rects, today);
+    if (!grid) return;
+    gridPages++;
+    const cands = gridCells(pd.items, pd.rects, grid).flatMap((c) => cellToCandidates(c, today, () => crypto.randomUUID(), legend));
+    cands.forEach((c) => (c.sourceLines = [idx + 1]));
+    structured.push(...cands);
+    rendered.push(`# Semana ${gridPages} (página ${idx + 1})`, renderCandidates(cands), "");
+  });
+  if (gridPages > 0) {
+    await task.destroy();
+    return {
+      text: rendered.join("\n").trim(),
+      structured,
+      source: "pdf",
+      fileName: file.name,
+      pages: pages.length,
+      warnings: [],
+      info: `Grade semanal reconhecida em ${gridPages} ${gridPages === 1 ? "página" : "páginas"}: ${structured.length} atividades. Atividades que já passaram, segundas chamadas e recessos vêm desmarcados.`,
+    };
   }
   const text = pages.join("\n\n");
   const warnings: string[] = [];

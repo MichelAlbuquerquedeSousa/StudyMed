@@ -27,6 +27,10 @@ const FLAG_TEXT: Record<FlagCode, string> = {
   "varias-datas": "Mais de uma data na mesma linha",
   duplicata: "Possível duplicata",
   conflito: "Conflito de horário",
+  alternativa: "Opção alternativa (“ou” no cronograma) — mantenha só a sua",
+  "sem-aula": "Sem aula (recesso/feriado) — desmarcado",
+  passado: "Já passou — desmarcado",
+  "segunda-chamada": "Segunda chamada — desmarcada; marque se você for fazer",
 };
 
 export function flag(code: FlagCode, severity: Flag["severity"] = "aviso", detail?: string): Flag {
@@ -158,11 +162,11 @@ export function findTime(line: string): FoundTime | null {
 
 // ---------------- Classificação ----------------
 
-const EXAM_RE = /\b(prova|avaliacao|exame|teste|simulado|osce|n1|n2|n3|ap1|ap2|av1|av2|segunda chamada|recuperacao)\b/;
+const EXAM_RE = /\b(prova|avaliacao|exame|teste|simulado|osce|n1|n2|n3|ap1|ap2|av1|av2|aim\s*\d|naf|segunda chamada|recuperacao)\b/;
 const TASK_RE = /\b(entrega|entregar|enviar|envio|ler|leitura|estudar|revisar|revisao|resumo|resumir|lista de exercicios|questoes|preparar|pagar|comprar)\b/;
 const CATEGORY_RULES: [RegExp, CategoryKey][] = [
   [/\b(tutoria|tutorial|tutora?|apg|pbl|sessao tutorial|abertura|fechamento)\b/, "tutoria"],
-  [/\b(pratica|praticas|laboratorio|lab|habilidades|simulacao|ambulatorio|estagio|plantao|campo|microscopia|dissecacao)\b/, "pratica"],
+  [/\b(pratica|praticas|laboratorio|lab|habilidades|simulacao|ambulatorio|estagio|plantao|campo|microscopia|dissecacao|oficina|extensao|ubs)\b/, "pratica"],
   [/\b(estudo|estudar|revisao|revisar|resumo|questoes|leitura|ler|flashcards?)\b/, "estudo"],
   [/\b(aula|teorica|conferencia|palestra|seminario)\b/, "aula"],
   [/\b(pagar|comprar|academia|consulta|pessoal|medico|dentista)\b/, "pessoal"],

@@ -73,6 +73,13 @@ function Importer({ today }: { today: ISODate }) {
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ batchId: string; items: number; exams: number } | null>(null);
   const [batchesVersion, setBatchesVersion] = useState(0);
+  const [filter, setFilterState] = useState<PreviewFilter>({ status: "selecionados", subject: "" });
+  // Cartões alterados agora continuam visíveis até trocar o filtro (não "somem" ao desmarcar).
+  const [pinned, setPinned] = useState<Set<string>>(new Set());
+  const setFilter = (f: PreviewFilter) => {
+    setFilterState(f);
+    setPinned(new Set());
+  };
 
   const reviewed = useMemo(() => review(edited, { items, overrides, exams }, period), [edited, items, overrides, exams, period]);
   const summary = summarize(reviewed);
@@ -81,17 +88,22 @@ function Importer({ today }: { today: ISODate }) {
   const analyze = () => {
     setError(null);
     if (!text.trim()) return setError(mode === "pdf" ? "Envie um PDF primeiro." : "Cole o texto do horário ou roteiro.");
-    const parsed = parsePlanning(text, today);
+    const parsed =
+      doc?.structured && text === doc.text
+        ? { candidates: doc.structured.map((c) => ({ ...c, flags: [...c.flags], topics: [...c.topics] })), unrecognized: [] }
+        : parsePlanning(text, today);
     if (parsed.candidates.length === 0) {
       return setError("Não encontrei datas, dias da semana ou horários neste material. Confira o texto ou ajuste o formato (ex.: “Segunda 07:30-09:10 Anatomia”).");
     }
     setEdited(parsed.candidates);
     setUnrecognized(parsed.unrecognized);
+    setFilter({ status: "selecionados", subject: "" });
     setStep("previa");
     window.scrollTo({ top: 0 });
   };
 
-  const update = (id: string, patch: Partial<ImportCandidate>) =>
+  const update = (id: string, patch: Partial<ImportCandidate>) => {
+    if ("include" in patch) setPinned((p) => new Set(p).add(id));
     setEdited((list) =>
       list.map((c) => {
         if (c.id !== id) return c;
@@ -99,6 +111,7 @@ function Importer({ today }: { today: ISODate }) {
         return { ...c, ...patch, flags: c.flags.filter((f) => !cleared.has(f.code)) };
       }),
     );
+  };
 
   const confirm = async () => {
     setBusy(true);
@@ -192,11 +205,19 @@ function Importer({ today }: { today: ISODate }) {
           {summary.bloqueados > 0 && <p className="text-sm text-muted">Corrija ou desmarque os itens com erro para continuar.</p>}
         </Card>
 
+        <PreviewFilters
+          candidates={reviewed}
+          filter={filter}
+          onFilter={setFilter}
+          onBulk={(ids, include) => setEdited((list) => list.map((c) => (ids.has(c.id) ? { ...c, include } : c)))}
+        />
+
         <ul className="grid gap-4 lg:grid-cols-2">
-          {reviewed.map((c) => (
+          {applyFilter(reviewed, filter, pinned).map((c) => (
             <CandidateCard key={c.id} c={c} onChange={(p) => update(c.id, p)} onRemove={() => setEdited((l) => l.filter((x) => x.id !== c.id))} />
           ))}
         </ul>
+        {applyFilter(reviewed, filter, pinned).length === 0 && <p className="text-center text-sm text-muted">Nenhum item neste filtro.</p>}
 
         {unrecognized.length > 0 && (
           <Card>
@@ -414,6 +435,11 @@ function PdfDrop({ busy, doc, onFile }: { busy: boolean; doc: ExtractedDocument 
           </span>
         </p>
       )}
+      {doc?.info && (
+        <p className="mt-2 flex gap-2 rounded-xl bg-[color-mix(in_oklab,var(--cat-estudo)_35%,var(--surface))] px-3 py-2 text-sm">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> {doc.info}
+        </p>
+      )}
       {doc?.warnings.map((w) => (
         <p key={w} className="mt-2 flex gap-2 rounded-xl bg-[color-mix(in_oklab,var(--cat-pessoal)_35%,var(--surface))] px-3 py-2 text-sm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {w}
@@ -463,9 +489,25 @@ function CandidateCard({ c, onChange, onRemove }: { c: ImportCandidate; onChange
       </div>
 
       <div className="space-y-3">
-        <Field label={c.kind === "prova" ? "Disciplina" : "Título"}>
-          <input value={c.title} onChange={(e) => onChange({ title: e.target.value })} className={clsx(fieldClass, "font-medium", !c.title.trim() && "border-accent")} />
-        </Field>
+        {c.kind === "prova" ? (
+          <div className="grid grid-cols-[1fr_1.4fr] gap-2">
+            <Field label="Avaliação">
+              <input value={c.examTitle ?? ""} onChange={(e) => onChange({ examTitle: e.target.value || undefined })} placeholder="Ex.: AIM 2" className={fieldClass} />
+            </Field>
+            <Field label="Disciplina">
+              <input value={c.title} onChange={(e) => onChange({ title: e.target.value })} className={clsx(fieldClass, "font-medium", !c.title.trim() && "border-accent")} />
+            </Field>
+          </div>
+        ) : (
+          <Field label="Título">
+            <textarea
+              value={c.title}
+              onChange={(e) => onChange({ title: e.target.value.replace(/\n/g, " ") })}
+              rows={c.title.length > 60 ? 2 : 1}
+              className={clsx(fieldClass, "py-2.5 font-medium", !c.title.trim() && "border-accent")}
+            />
+          </Field>
+        )}
 
         {c.kind !== "prova" && (
           <div className="scrollbar-none -mx-1 flex gap-1.5 overflow-x-auto px-1">
@@ -532,6 +574,16 @@ function CandidateCard({ c, onChange, onRemove }: { c: ImportCandidate; onChange
         </div>
 
         <input value={c.location ?? ""} onChange={(e) => onChange({ location: e.target.value || undefined })} placeholder="Local (opcional)" aria-label="Local" className={fieldClass} />
+        {(c.notes !== undefined || c.kind !== "prova") && (
+          <textarea
+            value={c.notes ?? ""}
+            onChange={(e) => onChange({ notes: e.target.value || undefined })}
+            placeholder="Observações (professores, tema…)"
+            aria-label="Observações"
+            rows={c.notes && c.notes.length > 60 ? 2 : 1}
+            className={clsx(fieldClass, "py-2 text-sm")}
+          />
+        )}
 
         {c.kind === "prova" && (
           <Field label={`Conteúdos (${c.topics.filter((t) => t.trim()).length}) — um por linha`}>
@@ -562,7 +614,8 @@ function CandidateCard({ c, onChange, onRemove }: { c: ImportCandidate; onChange
         )}
 
         <p className="truncate text-xs text-muted" title={c.sourceText}>
-          Linha {c.sourceLines[0]}: {c.sourceText}
+          {c.sourceLines[0] ? `${c.sourceText.includes(" · ") ? "Página" : "Linha"} ${c.sourceLines[0]}: ` : ""}
+          {c.sourceText}
         </p>
       </div>
     </li>
@@ -676,6 +729,93 @@ function RecentImports({ version }: { version: number }) {
           );
         })}
       </ul>
+    </Card>
+  );
+}
+
+type PreviewFilter = { status: "selecionados" | "desmarcados" | "avisos" | "todos"; subject: string };
+
+/** Disciplina de um candidato (para filtrar): "Obstetrícia — Aula 1…" → "Obstetrícia". */
+function subjectOf(c: ImportCandidate): string {
+  return c.kind === "prova" ? c.title : c.title.split(" — ")[0].split(":")[0].trim();
+}
+
+function applyFilter(list: ImportCandidate[], f: PreviewFilter, pinned: Set<string> = new Set()): ImportCandidate[] {
+  return list.filter(
+    (c) =>
+      (f.status === "todos" ||
+        pinned.has(c.id) ||
+        (f.status === "selecionados" && c.include) ||
+        (f.status === "desmarcados" && !c.include) ||
+        (f.status === "avisos" && (c.flags.length > 0 || blockingErrors(c).length > 0))) &&
+      (!f.subject || subjectOf(c) === f.subject),
+  );
+}
+
+function PreviewFilters({
+  candidates,
+  filter,
+  onFilter,
+  onBulk,
+}: {
+  candidates: ImportCandidate[];
+  filter: PreviewFilter;
+  onFilter: (f: PreviewFilter) => void;
+  onBulk: (ids: Set<string>, include: boolean) => void;
+}) {
+  if (candidates.length < 8) return null;
+  const subjects = [...new Set(candidates.map(subjectOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const visible = applyFilter(candidates, filter);
+  const count = (s: PreviewFilter["status"]) => applyFilter(candidates, { ...filter, status: s }).length;
+  const past = candidates.filter((c) => c.flags.some((f) => f.code === "passado"));
+  const pastIncluded = past.filter((c) => c.include).length;
+  return (
+    <Card className="space-y-3">
+      <div className="scrollbar-none -mx-1 overflow-x-auto px-1">
+        <Segmented
+          label="Filtrar prévia"
+          value={filter.status}
+          onChange={(status) => onFilter({ ...filter, status })}
+          options={[
+            { value: "selecionados", label: "Selecionados", count: count("selecionados") },
+            { value: "desmarcados", label: "Desmarcados", count: count("desmarcados") },
+            { value: "avisos", label: "Com aviso", count: count("avisos") },
+            { value: "todos", label: "Todos", count: count("todos") },
+          ]}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={filter.subject}
+          onChange={(e) => onFilter({ ...filter, subject: e.target.value })}
+          aria-label="Filtrar por disciplina"
+          className={clsx(fieldClass, "w-full sm:w-auto")}
+        >
+          <option value="">Todas as disciplinas</option>
+          {subjects.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+        <SecondaryButton disabled={!visible.length} onClick={() => onBulk(new Set(visible.map((c) => c.id)), true)}>
+          Marcar {visible.length}
+        </SecondaryButton>
+        <SecondaryButton disabled={!visible.length} onClick={() => onBulk(new Set(visible.map((c) => c.id)), false)}>
+          Desmarcar {visible.length}
+        </SecondaryButton>
+      </div>
+      {past.length > 0 && (
+        <label className="flex min-h-9 cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={pastIncluded === past.length}
+            onChange={(e) => onBulk(new Set(past.map((c) => c.id)), e.target.checked)}
+            className="size-5 accent-[var(--accent)]"
+          />
+          Incluir também as {past.length} atividades que já passaram
+        </label>
+      )}
     </Card>
   );
 }

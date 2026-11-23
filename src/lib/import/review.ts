@@ -39,6 +39,7 @@ export function candidateToItem(c: ImportCandidate, period: ImportPeriod, id: st
     startTime: c.startTime,
     endTime: c.startTime ? c.endTime : undefined,
     location: c.location?.trim() || undefined,
+    notes: c.notes?.trim() || undefined,
     recurrence: recurring ? { freq: "weekly", weekdays: [...c.weekdays].sort((a, b) => a - b), startsOn: period.startsOn, ...(period.endsOn ? { endsOn: period.endsOn } : {}) } : undefined,
     doneAt: null,
     source: "importado",
@@ -51,7 +52,8 @@ export function candidateToExam(c: ImportCandidate, id: string, importBatchId: s
   return {
     id,
     subject,
-    title: `Prova — ${subject}`,
+    title: c.examTitle ? `${c.examTitle} — ${subject}` : `Prova — ${subject}`,
+    notes: c.notes?.trim() || undefined,
     date: c.date!,
     startTime: c.startTime,
     location: c.location?.trim() || undefined,
@@ -122,6 +124,8 @@ export function review(
         if (!c) continue;
         const otherCand = byKey.get(other.key);
         if (otherCand === c) continue;
+        // Opções alternativas da mesma célula ("A ou B") naturalmente coincidem: não é conflito.
+        if (otherCand && c.group && otherCand.group === c.group) continue;
         // A própria cópia já existente é duplicata (sinalizada acima), não conflito.
         if (!otherCand && normalizeTitle(other.title.replace(/^Prova · /, "")) === normalizeTitle(c.title) && other.startTime === mine.startTime) continue;
         const label = otherCand ? `${describe(other)} — também neste material` : describe(other);
